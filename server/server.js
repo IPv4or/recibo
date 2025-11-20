@@ -6,20 +6,20 @@ require('dotenv').config();
 
 const app = express();
 
-// 1. Connect Database (Optional for now, uncomment if using Mongo)
-// connectDB();
+// 1. Connect Database (UNCOMMENTED NOW)
+connectDB();
 
 // 2. Middleware
 app.use(cors());
-app.use(express.json({ limit: '50mb' })); // Increased limit for base64 images
+app.use(express.json({ limit: '50mb' })); 
 
 // 3. Serve Static Frontend
 app.use(express.static(path.join(__dirname, '../client')));
 
-// 4. API Routes (Now Active)
+// 4. API Routes
 app.use('/api', require('./routes/api'));
 
-// 5. Catch-all route to serve index.html for SPA
+// 5. Catch-all route
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, '../client/index.html'));
 });
