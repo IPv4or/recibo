@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>recibo</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Font: DM Sans -->
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="css/styles.css">
+
+    <!-- Tailwind Config -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['DM Sans', 'sans-serif'],
+                    },
+                    colors: {
+                        gray: {
+                            850: '#1f2937',
+                            900: '#121212', 
+                            950: '#050505',
+                        },
+                        brand: {
+                            400: '#4ADE80', 
+                            500: '#22c55e',
+                            600: '#16a34a',
+                        }
+                    },
+                    animation: {
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-950 text-gray-100 h-screen flex flex-col overflow-hidden select-none">
+
+    <!-- Header -->
+    <header class="flex justify-between items-center p-5 absolute top-0 left-0 right-0 z-20 pointer-events-none">
+        <div class="flex items-center gap-2 pointer-events-auto">
+            <h1 class="font-bold text-2xl tracking-tighter text-white drop-shadow-md">recibo</h1>
+        </div>
+        <button id="devBtn" class="text-white/50 hover:text-white pointer-events-auto transition-colors text-xs uppercase tracking-widest backdrop-blur-md bg-black/20 px-2 py-1 rounded">
+            Dev
+        </button>
+    </header>
+
+    <!-- Main Content Area -->
+    <main id="app" class="flex-1 relative h-full">
+        
+        <!-- VIEW: Landing -->
+        <section id="view-landing" class="view-section h-full flex flex-col items-center justify-end pb-12 px-6 bg-gradient-to-b from-gray-900 to-black">
+            
+            <div class="flex-1 flex flex-col items-center justify-center w-full">
+                <div class="relative w-48 h-48 mb-8">
+                    <div class="absolute inset-0 bg-brand-500/5 rounded-full blur-3xl"></div>
+                    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+                        <i class="fa-solid fa-qrcode text-7xl text-gray-800"></i>
+                        <i class="fa-solid fa-check absolute -bottom-2 -right-2 text-brand-400 text-4xl drop-shadow-lg bg-gray-900 rounded-full p-2 border-4 border-gray-900"></i>
+                    </div>
+                </div>
+                
+                <h2 class="text-4xl font-bold text-white mb-8 tracking-tight text-center">Stop overpaying.</h2>
+                
+                <div class="w-full max-w-xs space-y-6">
+                    <div class="flex gap-4 items-center">
+                        <div class="w-10 h-10 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-brand-400 font-bold shrink-0">1</div>
+                        <p class="text-gray-300 text-lg">Scan items as you put them in your cart.</p>
+                    </div>
+                    <div class="flex gap-4 items-center">
+                        <div class="w-10 h-10 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-brand-400 font-bold shrink-0">2</div>
+                        <p class="text-gray-300 text-lg">Scan your receipt after checking out.</p>
+                    </div>
+                    <div class="flex gap-4 items-center">
+                        <div class="w-10 h-10 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-brand-400 font-bold shrink-0">3</div>
+                        <p class="text-gray-300 text-lg">Recibo finds the errors instantly.</p>
+                    </div>
+                </div>
+            </div>
+
+            <button onclick="app.startShopping()" class="mt-10 w-full max-w-sm bg-white text-black py-4 rounded-2xl font-bold text-lg shadow-xl shadow-white/5 active:scale-95 transition-all flex items-center justify-center gap-3">
+                <i class="fa-solid fa-camera"></i>
+                Start Shopping
+            </button>
+        </section>
+
+        <!-- VIEW: Item Scanner (Full Screen) -->
+        <section id="view-scanner" class="view-section hidden h-full flex flex-col bg-black">
+            <div class="relative flex-1 flex flex-col items-center justify-center overflow-hidden">
+                <video id="camera-feed" autoplay playsinline class="absolute inset-0 w-full h-full object-cover"></video>
+                
+                <div class="absolute top-24 inset-x-0 flex justify-center z-10">
+                     <p class="text-white/90 font-medium bg-black/40 backdrop-blur-md px-6 py-2 rounded-full border border-white/10 shadow-lg">
+                        Point at item
+                    </p>
+                </div>
+
+                <div class="absolute bottom-10 left-0 right-0 flex justify-center items-center z-20 gap-10">
+                    <button id="scanner-bag-btn" onclick="app.switchView('view-list')" class="relative w-14 h-14 rounded-full bg-black/40 text-white flex items-center justify-center hover:bg-black/60 backdrop-blur-md transition-all border border-white/10 z-20">
+                        <i class="fa-solid fa-bag-shopping text-lg"></i>
+                        <div id="scanner-badge" class="absolute -top-1 -right-1 bg-brand-500 text-black text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center transform scale-0 transition-transform duration-200">0</div>
+                    </button>
+
+                    <button onclick="app.captureItem()" class="w-20 h-20 rounded-full border-4 border-white bg-white/20 backdrop-blur-sm flex items-center justify-center active:scale-95 transition-all">
+                        <div class="w-16 h-16 bg-white rounded-full shadow-lg"></div>
+                    </button>
+
+                    <button class="w-14 h-14 rounded-full bg-black/40 text-white flex items-center justify-center hover:bg-black/60 backdrop-blur-md transition-all border border-white/10">
+                        <i class="fa-solid fa-bolt"></i>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- VIEW: Receipt Scanner (Full Screen) -->
+        <section id="view-receipt-scanner" class="view-section hidden h-full flex flex-col bg-black">
+            <div class="relative flex-1 flex flex-col items-center justify-center overflow-hidden">
+                <video id="receipt-camera-feed" autoplay playsinline class="absolute inset-0 w-full h-full object-cover"></video>
+                
+                <div class="absolute top-24 inset-x-0 flex justify-center z-10">
+                     <p class="text-brand-400 font-bold text-sm bg-black/60 backdrop-blur-md px-4 py-2 rounded-full tracking-wider uppercase border border-brand-500/30 shadow-lg">
+                        Align Receipt
+                    </p>
+                </div>
+
+                <div class="absolute bottom-10 left-0 right-0 flex justify-center items-center z-20 gap-10">
+                    <button onclick="app.switchView('view-list')" class="w-14 h-14 rounded-full bg-black/40 text-white flex items-center justify-center hover:bg-black/60 backdrop-blur-md transition-all border border-white/10">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
+
+                    <button onclick="app.captureReceipt()" class="w-20 h-20 rounded-full border-4 border-brand-500 bg-brand-500/20 backdrop-blur-sm flex items-center justify-center active:scale-95 transition-all">
+                        <div class="w-16 h-16 bg-brand-500 rounded-full shadow-lg shadow-brand-500/50"></div>
+                    </button>
+
+                    <div class="w-14 h-14"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- VIEW: Processing State -->
+        <section id="view-processing" class="view-section hidden h-full flex flex-col items-center justify-center bg-gray-950 p-6 text-center z-30 absolute inset-0">
+            <div class="w-16 h-16 border-4 border-brand-500/30 border-t-brand-500 rounded-full animate-spin mb-6"></div>
+            <h3 class="text-2xl font-bold mb-2" id="processing-title">Identifying...</h3>
+            <p class="text-gray-400 text-sm" id="processing-subtitle">Matching product details</p>
+        </section>
+
+        <!-- VIEW: Cart List -->
+        <section id="view-list" class="view-section hidden h-full flex flex-col bg-gray-950">
+            <div class="pt-20 pb-4 px-6 border-b border-gray-900 bg-gray-950 z-10 flex justify-between items-start">
+                <div>
+                    <h2 class="text-3xl font-bold text-white">My Cart</h2>
+                    <p class="text-gray-500 text-sm mt-1"><span id="item-count">0</span> items scanned</p>
+                </div>
+                <div class="text-right">
+                     <p class="text-xs text-gray-500 mb-1">Estimated</p>
+                    <p class="text-brand-400 font-bold text-2xl" id="cart-total">$0.00</p>
+                </div>
+            </div>
+            
+            <div id="cart-items" class="flex-1 overflow-y-auto p-4 space-y-3 pb-32">
+                <!-- Items go here -->
+            </div>
+
+            <div class="fixed bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-gray-950 via-gray-950 to-transparent flex gap-3 items-end">
+                <button onclick="app.openManualAdd()" class="w-14 h-14 rounded-full bg-gray-800 text-gray-300 flex items-center justify-center shadow-lg hover:bg-gray-700 transition-colors flex-shrink-0 border border-gray-700" title="Add Manual Item">
+                    <i class="fa-solid fa-pen-to-square"></i>
+                </button>
+                <button onclick="app.switchView('view-scanner')" class="w-14 h-14 rounded-full bg-gray-800 text-brand-400 flex items-center justify-center shadow-lg hover:bg-gray-700 transition-colors flex-shrink-0 border border-gray-700" title="Scan Item">
+                    <i class="fa-solid fa-camera"></i>
+                </button>
+                <button onclick="app.startReceiptScan()" class="flex-1 h-14 bg-white text-black rounded-2xl font-bold text-lg shadow-lg hover:bg-gray-200 transition-colors flex items-center justify-center gap-2">
+                    Verify Receipt <i class="fa-solid fa-arrow-right text-sm"></i>
+                </button>
+            </div>
+        </section>
+
+        <!-- VIEW: Results -->
+        <section id="view-results" class="view-section hidden h-full flex flex-col bg-gray-950">
+            <div class="p-6 pt-12 border-b border-gray-900">
+                <h2 class="text-2xl font-bold text-white">Verification Report</h2>
+                <p class="text-sm text-gray-500 mt-1" id="timestamp-display">Today, 12:42 PM</p>
+            </div>
+            <div class="flex-1 overflow-y-auto p-6">
+                <div id="status-card" class="bg-gray-900 rounded-2xl p-6 mb-6 border border-gray-800 flex items-center gap-4"></div>
+                <h3 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Discrepancy Details</h3>
+                <div id="discrepancies-list" class="space-y-4"></div>
+                <div class="mt-8 pt-8 border-t border-gray-900">
+                     <h3 class="text-xs font-bold text-gray-600 uppercase tracking-widest mb-4">Verified Items (Matches)</h3>
+                     <div class="opacity-50 pointer-events-none" id="verified-list-preview"></div>
+                </div>
+            </div>
+            <div class="p-6 border-t border-gray-900 bg-gray-950">
+                <button onclick="app.reset()" class="w-full py-4 bg-gray-800 hover:bg-gray-700 text-white rounded-2xl font-bold transition-colors">Start New Trip</button>
+            </div>
+        </section>
+
+        <!-- VIEW: Dispute Evidence (Highlighting) -->
+        <section id="view-dispute" class="view-section hidden h-full flex flex-col bg-black z-40">
+            <div class="p-4 pt-12 bg-black/80 backdrop-blur-md absolute top-0 left-0 right-0 z-20 flex justify-between items-center">
+                <h2 class="text-lg font-bold text-white">Digital Evidence</h2>
+                <button onclick="app.switchView('view-results')" class="w-8 h-8 bg-gray-800 rounded-full flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div class="flex-1 relative overflow-hidden flex items-center justify-center">
+                <img id="dispute-image" src="" class="w-full h-full object-contain opacity-60">
+                <div id="dispute-highlight" class="absolute border-2 border-red-500 bg-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.5)] animate-pulse-slow rounded">
+                     <div class="absolute -top-8 left-0 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded shadow-lg">
+                        <i class="fa-solid fa-triangle-exclamation mr-1"></i> Duplicate Scan
+                     </div>
+                </div>
+            </div>
+
+            <div class="p-6 bg-gray-900 border-t border-gray-800 z-20">
+                <h3 class="font-bold text-white mb-1">Line Item 4: "Organic Bananas"</h3>
+                <p class="text-sm text-gray-400 mb-4">The receipt scanner detected this item on line 4 and again on line 7, but you only scanned it once.</p>
+                <button class="w-full py-4 bg-white text-black rounded-xl font-bold">Save Evidence to Gallery</button>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Hidden Canvas -->
+    <canvas id="capture-canvas" class="hidden"></canvas>
+
+    <!-- Manual/Edit Modal -->
+    <div id="manual-modal" class="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 hidden flex items-center justify-center p-6">
+        <div class="bg-gray-900 rounded-2xl border border-gray-800 w-full max-w-sm p-6 transform transition-all scale-100">
+            <h3 id="modal-title" class="text-xl font-bold mb-6 text-white">Add Item</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1 uppercase tracking-wider">Item Name</label>
+                    <input type="text" id="manual-name" placeholder="e.g. Milk" class="w-full bg-black border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-brand-500 outline-none transition-colors placeholder-gray-700">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1 uppercase tracking-wider">Price</label>
+                    <input type="number" id="manual-price" placeholder="0.00" step="0.01" class="w-full bg-black border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-brand-500 outline-none transition-colors placeholder-gray-700">
+                </div>
+            </div>
+            <div class="mt-8 flex gap-3">
+                <button onclick="app.closeManualAdd()" class="flex-1 py-3 rounded-xl border border-gray-800 text-gray-400 font-bold hover:text-white hover:bg-gray-800">Cancel</button>
+                <button onclick="app.saveManualItem()" class="flex-1 py-3 rounded-xl bg-brand-600 text-white font-bold hover:bg-brand-500">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Developer Settings -->
+    <div id="settings-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-50 hidden flex items-center justify-center p-6">
+        <div class="bg-gray-900 rounded-2xl border border-gray-800 w-full max-w-sm p-6">
+            <h3 class="text-lg font-bold mb-4 text-white">Developer Config</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1 uppercase tracking-wider">Backend API Key</label>
+                    <input type="password" id="api-key-input" class="w-full bg-black border border-gray-800 rounded-lg px-4 py-3 text-sm text-white focus:border-brand-500 outline-none transition-colors">
+                </div>
+            </div>
+            <div class="mt-6 flex justify-end">
+                <button onclick="document.getElementById('settings-modal').classList.add('hidden')" class="text-gray-400 hover:text-white text-sm font-medium">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- App Script -->
+    <script type="module" src="js/app.js"></script>
+</body>
+</html>
