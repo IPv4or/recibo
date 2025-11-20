@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>recibo</title>
     
     <!-- Tailwind CSS -->
@@ -17,7 +17,6 @@
     <!-- Custom Styles -->
     <link rel="stylesheet" href="css/styles.css">
 
-    <!-- Tailwind Config -->
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -46,7 +45,8 @@
         }
     </script>
 </head>
-<body class="bg-gray-950 text-gray-100 h-screen flex flex-col overflow-hidden select-none">
+<!-- FIX: Changed h-screen to h-[100dvh] to fix mobile cut-off -->
+<body class="bg-gray-950 text-gray-100 h-[100dvh] flex flex-col overflow-hidden select-none supports-[height:100dvh]:h-[100dvh]">
 
     <!-- Header -->
     <header class="flex justify-between items-center p-5 absolute top-0 left-0 right-0 z-20 pointer-events-none">
@@ -59,7 +59,7 @@
     </header>
 
     <!-- Main Content Area -->
-    <main id="app" class="flex-1 relative h-full">
+    <main id="app" class="flex-1 relative h-full overflow-hidden">
         
         <!-- VIEW: Landing -->
         <section id="view-landing" class="view-section h-full flex flex-col items-center justify-end pb-12 px-6 bg-gradient-to-b from-gray-900 to-black">
@@ -97,8 +97,8 @@
             </button>
         </section>
 
-        <!-- VIEW: Item Scanner (Full Screen) -->
-        <section id="view-scanner" class="view-section hidden h-full flex flex-col bg-black">
+        <!-- VIEW: Item Scanner -->
+        <section id="view-scanner" class="view-section hidden h-full flex flex-col bg-black relative">
             <div class="relative flex-1 flex flex-col items-center justify-center overflow-hidden">
                 <video id="camera-feed" autoplay playsinline class="absolute inset-0 w-full h-full object-cover"></video>
                 
@@ -108,7 +108,8 @@
                     </p>
                 </div>
 
-                <div class="absolute bottom-10 left-0 right-0 flex justify-center items-center z-20 gap-10">
+                <!-- FIX: Added extra padding-bottom (pb-12) to ensure controls aren't cut off on some devices -->
+                <div class="absolute bottom-0 left-0 right-0 flex justify-center items-center z-20 gap-10 pb-12 pt-12 bg-gradient-to-t from-black/80 to-transparent">
                     <button id="scanner-bag-btn" onclick="app.switchView('view-list')" class="relative w-14 h-14 rounded-full bg-black/40 text-white flex items-center justify-center hover:bg-black/60 backdrop-blur-md transition-all border border-white/10 z-20">
                         <i class="fa-solid fa-bag-shopping text-lg"></i>
                         <div id="scanner-badge" class="absolute -top-1 -right-1 bg-brand-500 text-black text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center transform scale-0 transition-transform duration-200">0</div>
@@ -125,8 +126,8 @@
             </div>
         </section>
 
-        <!-- VIEW: Receipt Scanner (Full Screen) -->
-        <section id="view-receipt-scanner" class="view-section hidden h-full flex flex-col bg-black">
+        <!-- VIEW: Receipt Scanner -->
+        <section id="view-receipt-scanner" class="view-section hidden h-full flex flex-col bg-black relative">
             <div class="relative flex-1 flex flex-col items-center justify-center overflow-hidden">
                 <video id="receipt-camera-feed" autoplay playsinline class="absolute inset-0 w-full h-full object-cover"></video>
                 
@@ -136,7 +137,7 @@
                     </p>
                 </div>
 
-                <div class="absolute bottom-10 left-0 right-0 flex justify-center items-center z-20 gap-10">
+                <div class="absolute bottom-0 left-0 right-0 flex justify-center items-center z-20 gap-10 pb-12 pt-12 bg-gradient-to-t from-black/80 to-transparent">
                     <button onclick="app.switchView('view-list')" class="w-14 h-14 rounded-full bg-black/40 text-white flex items-center justify-center hover:bg-black/60 backdrop-blur-md transition-all border border-white/10">
                         <i class="fa-solid fa-xmark text-lg"></i>
                     </button>
@@ -170,11 +171,13 @@
                 </div>
             </div>
             
-            <div id="cart-items" class="flex-1 overflow-y-auto p-4 space-y-3 pb-32">
+            <!-- FIX: Increased bottom padding (pb-40) so the last item isn't hidden behind the floating buttons -->
+            <div id="cart-items" class="flex-1 overflow-y-auto p-4 space-y-3 pb-40">
                 <!-- Items go here -->
             </div>
 
-            <div class="fixed bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-gray-950 via-gray-950 to-transparent flex gap-3 items-end">
+            <!-- FIX: Using bottom-8 to raise the controls up slightly from the edge -->
+            <div class="fixed bottom-0 left-0 right-0 pb-8 pt-6 px-6 bg-gradient-to-t from-gray-950 via-gray-950/90 to-transparent flex gap-3 items-end z-20">
                 <button onclick="app.openManualAdd()" class="w-14 h-14 rounded-full bg-gray-800 text-gray-300 flex items-center justify-center shadow-lg hover:bg-gray-700 transition-colors flex-shrink-0 border border-gray-700" title="Add Manual Item">
                     <i class="fa-solid fa-pen-to-square"></i>
                 </button>
@@ -193,7 +196,7 @@
                 <h2 class="text-2xl font-bold text-white">Verification Report</h2>
                 <p class="text-sm text-gray-500 mt-1" id="timestamp-display">Today, 12:42 PM</p>
             </div>
-            <div class="flex-1 overflow-y-auto p-6">
+            <div class="flex-1 overflow-y-auto p-6 pb-32">
                 <div id="status-card" class="bg-gray-900 rounded-2xl p-6 mb-6 border border-gray-800 flex items-center gap-4"></div>
                 <h3 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Discrepancy Details</h3>
                 <div id="discrepancies-list" class="space-y-4"></div>
@@ -202,7 +205,7 @@
                      <div class="opacity-50 pointer-events-none" id="verified-list-preview"></div>
                 </div>
             </div>
-            <div class="p-6 border-t border-gray-900 bg-gray-950">
+            <div class="absolute bottom-0 left-0 right-0 p-6 pb-8 bg-gradient-to-t from-gray-950 to-transparent">
                 <button onclick="app.reset()" class="w-full py-4 bg-gray-800 hover:bg-gray-700 text-white rounded-2xl font-bold transition-colors">Start New Trip</button>
             </div>
         </section>
@@ -223,7 +226,7 @@
                 </div>
             </div>
 
-            <div class="p-6 bg-gray-900 border-t border-gray-800 z-20">
+            <div class="p-6 bg-gray-900 border-t border-gray-800 z-20 pb-12">
                 <h3 class="font-bold text-white mb-1">Line Item 4: "Organic Bananas"</h3>
                 <p class="text-sm text-gray-400 mb-4">The receipt scanner detected this item on line 4 and again on line 7, but you only scanned it once.</p>
                 <button class="w-full py-4 bg-white text-black rounded-xl font-bold">Save Evidence to Gallery</button>
