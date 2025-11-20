@@ -1,40 +1,19 @@
-const MOCK_DATABASE = [
-    { name: "Avocados (Bag)", price: 5.99, icon: "fa-carrot" },
-    { name: "Oat Milk", price: 4.49, icon: "fa-bottle-water" },
-    { name: "Whole Wheat Bread", price: 3.25, icon: "fa-bread-slice" },
-    { name: "Ground Coffee", price: 12.99, icon: "fa-mug-hot" },
-    { name: "Dish Soap", price: 2.99, icon: "fa-pump-soap" }
-];
-
 class ReciboApp {
     constructor() {
         this.state = {
             items: [],
             editingId: null,
             receiptImage: null,
-            demoMode: true,
-            apiKey: ''
+            // We don't need apiKey here anymore, the server handles it!
+            verificationResult: null 
         };
         this.stream = null;
         this.init();
     }
 
     init() {
-        document.getElementById('devBtn').addEventListener('click', () => {
-            document.getElementById('settings-modal').classList.remove('hidden');
-        });
-        
-        // Try to load API key from localStorage for convenience
-        const storedKey = localStorage.getItem('recibo_api_key');
-        if(storedKey) {
-            this.state.apiKey = storedKey;
-            document.getElementById('api-key-input').value = storedKey;
-        }
-        
-        document.getElementById('api-key-input').addEventListener('change', (e) => {
-            this.state.apiKey = e.target.value;
-            localStorage.setItem('recibo_api_key', e.target.value);
-        });
+        // Dev button can remain for debugging or be hidden
+        document.getElementById('devBtn').style.display = 'none'; 
     }
 
     switchView(viewId) {
@@ -45,7 +24,7 @@ class ReciboApp {
         if (viewId === 'view-scanner') this.startCamera('camera-feed');
         if (viewId === 'view-receipt-scanner') this.startCamera('receipt-camera-feed');
         if (viewId === 'view-list') this.renderCart();
-        if (viewId === 'view-landing') this.state.items = [];
+        // Don't clear items on landing view return, user might want to go back
     }
 
     async startCamera(videoElementId) {
@@ -76,9 +55,45 @@ class ReciboApp {
 
     async captureItem() {
         const video = document.getElementById('camera-feed');
+        
+        // 1. Get Image
         const imageUrl = this.getFrameFromVideo(video);
-        await this.animateJumpToBag(imageUrl);
-        this.addItemToCartInBackground();
+        
+        // 2. Visual Feedback (Animation)
+        // We start the animation immediately so it feels fast
+        this.animateJumpToBag(imageUrl);
+
+        // 3. Send to Server in Background
+        try {
+            const response = await fetch('/api/identify-item', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: imageUrl })
+            });
+            
+            const data = await response.json();
+            
+            // Add the REAL item returned from AI
+            this.state.items.push({
+                name: data.name || "Unknown Item",
+                price: data.price || 0.00,
+                icon: data.icon || "fa-box",
+                id: Date.now()
+            });
+            
+            this.updateScannerBadge();
+            
+        } catch (error) {
+            console.error("Error identifying item:", error);
+            // Fallback so the user flow doesn't break
+            this.state.items.push({
+                name: "Manual Check Required",
+                price: 0.00,
+                icon: "fa-circle-question",
+                id: Date.now()
+            });
+            this.updateScannerBadge();
+        }
     }
 
     startReceiptScan() {
@@ -89,7 +104,7 @@ class ReciboApp {
         const video = document.getElementById('receipt-camera-feed');
         const imageUrl = this.getFrameFromVideo(video);
         this.state.receiptImage = imageUrl;
-        this.handleReceiptUpload();
+        this.handleReceiptVerification();
     }
 
     getFrameFromVideo(video) {
@@ -104,7 +119,7 @@ class ReciboApp {
             context.fillStyle = '#333';
             context.fillRect(0, 0, canvas.width, canvas.height);
         }
-        return canvas.toDataURL('image/jpeg');
+        return canvas.toDataURL('image/jpeg', 0.8); // Compress slightly for faster upload
     }
 
     async animateJumpToBag(imageUrl) {
@@ -158,12 +173,6 @@ class ReciboApp {
             };
             requestAnimationFrame(animate);
         });
-    }
-
-    addItemToCartInBackground() {
-        const randomItem = MOCK_DATABASE[Math.floor(Math.random() * MOCK_DATABASE.length)];
-        this.state.items.push({ ...randomItem, id: Date.now() });
-        this.updateScannerBadge();
     }
 
     openManualAdd(id = null) {
@@ -292,20 +301,45 @@ class ReciboApp {
         totalEl.innerText = '$' + total.toFixed(2);
     }
 
-    async handleReceiptUpload() {
+    async handleReceiptVerification() {
+        // UI State: Processing
         document.getElementById('processing-title').innerText = "Reading Receipt...";
-        document.getElementById('processing-subtitle').innerText = "Digitizing line items";
+        document.getElementById('processing-subtitle').innerText = "Sending to cloud for analysis";
         this.switchView('view-processing');
-        await this.wait(1500);
-        document.getElementById('processing-title').innerText = "Verifying...";
-        document.getElementById('processing-subtitle').innerText = "Comparing receipt against cart";
-        await this.wait(1500);
-        this.showResults();
+
+        try {
+            // Call Backend
+            const response = await fetch('/api/verify-receipt', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    receiptImage: this.state.receiptImage,
+                    userItems: this.state.items
+                })
+            });
+
+            const result = await response.json();
+            this.state.verificationResult = result;
+
+            // UI State: Verifying
+            document.getElementById('processing-title').innerText = "Verifying...";
+            document.getElementById('processing-subtitle').innerText = "Comparing receipt against cart";
+            await this.wait(1000); // Short delay for UX pacing
+
+            this.showResults();
+
+        } catch (error) {
+            console.error("Verification error:", error);
+            alert("Failed to verify receipt. Please try again.");
+            this.switchView('view-list');
+        }
     }
 
     showResults() {
         this.switchView('view-results');
-        const hasIssues = this.state.items.length > 0;
+        const result = this.state.verificationResult;
+        const hasIssues = result && result.discrepancies && result.discrepancies.length > 0;
+        
         const container = document.getElementById('status-card');
         const list = document.getElementById('discrepancies-list');
         const verifiedList = document.getElementById('verified-list-preview');
@@ -319,23 +353,27 @@ class ReciboApp {
             container.innerHTML = `
                 <div class="flex items-center gap-3">
                     <div class="bg-red-500 text-white w-10 h-10 rounded-full flex items-center justify-center text-lg shadow-lg shadow-red-500/20"><i class="fa-solid fa-exclamation"></i></div>
-                    <div><h3 class="font-bold text-white text-lg">Potential Overcharge</h3><p class="text-red-200 text-sm">1 error found.</p></div>
+                    <div><h3 class="font-bold text-white text-lg">Discrepancies Found</h3><p class="text-red-200 text-sm">${result.discrepancies.length} potential error(s).</p></div>
                 </div>
             `;
-            const badItem = this.state.items[0];
-            list.innerHTML = `
-                <div class="bg-gray-900 rounded-xl p-4 border-l-4 border-red-500">
+            
+            result.discrepancies.forEach(issue => {
+                const el = document.createElement('div');
+                el.className = "bg-gray-900 rounded-xl p-4 border-l-4 border-red-500";
+                el.innerHTML = `
                     <div class="flex justify-between items-start mb-2">
-                        <h4 class="font-bold text-white text-lg">${badItem.name}</h4>
-                        <span class="bg-red-500/20 text-red-400 text-xs font-bold px-2 py-1 rounded">Double Counted</span>
+                        <h4 class="font-bold text-white text-lg">${issue.itemName || "Unknown Item"}</h4>
+                        <span class="bg-red-500/20 text-red-400 text-xs font-bold px-2 py-1 rounded">Error</span>
                     </div>
-                    <p class="text-gray-400 text-sm leading-relaxed mb-4">Receipt lists this <strong>2 times</strong> ($${(badItem.price*2).toFixed(2)}), but you scanned it <strong>once</strong> ($${badItem.price}).</p>
+                    <p class="text-gray-400 text-sm leading-relaxed mb-4">${issue.issue || issue.message}</p>
                     <div class="flex gap-3">
                         <button onclick="app.showDispute()" class="flex-1 bg-white text-black py-2 rounded-lg font-bold text-sm hover:bg-gray-200">Dispute Charge</button>
                         <button class="px-4 py-2 border border-gray-700 rounded-lg text-gray-400 text-sm font-medium hover:text-white">Dismiss</button>
                     </div>
-                </div>
-            `;
+                `;
+                list.appendChild(el);
+            });
+
         } else {
             container.className = "bg-brand-900/20 rounded-2xl p-6 mb-6 border border-brand-500/20 flex items-center gap-4";
             container.innerHTML = `
@@ -345,6 +383,7 @@ class ReciboApp {
             list.innerHTML = `<p class="text-gray-600 text-center text-sm italic">No errors detected.</p>`;
         }
 
+        // List confirmed items
         this.state.items.forEach(item => {
             const el = document.createElement('div');
             el.className = "flex justify-between text-sm py-2 border-b border-gray-800 text-gray-500";
@@ -358,6 +397,7 @@ class ReciboApp {
         const img = document.getElementById('dispute-image');
         img.src = this.state.receiptImage || ''; 
         const highlight = document.getElementById('dispute-highlight');
+        // Static for now, ideally dynamic from API coords
         highlight.style.top = '40%';
         highlight.style.left = '10%';
         highlight.style.width = '80%';
