@@ -6,7 +6,7 @@ require('dotenv').config();
 
 const app = express();
 
-// 1. Connect Database (Uncomment when you add MONGO_URI to Railway variables)
+// 1. Connect Database (Optional for now, uncomment if using Mongo)
 // connectDB();
 
 // 2. Middleware
@@ -16,8 +16,8 @@ app.use(express.json({ limit: '50mb' })); // Increased limit for base64 images
 // 3. Serve Static Frontend
 app.use(express.static(path.join(__dirname, '../client')));
 
-// 4. API Routes (Placeholder for future backend logic)
-// app.use('/api', require('./routes/api'));
+// 4. API Routes (Now Active)
+app.use('/api', require('./routes/api'));
 
 // 5. Catch-all route to serve index.html for SPA
 app.get('*', (req, res) => {
