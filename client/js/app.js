@@ -64,7 +64,7 @@ class ReciboApp {
         const tempId = Date.now();
         this.state.items.push({
             id: tempId,
-            name: "Analyzing...",
+            name: "Analyzing Image...",
             price: 0.00,
             icon: "fa-spinner fa-spin",
             isProcessing: true
@@ -77,7 +77,7 @@ class ReciboApp {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
-                    image: imageUrl,
+                    image: imageUrl, // Sending raw image
                     storeContext: this.state.storeName 
                 })
             });
@@ -87,7 +87,7 @@ class ReciboApp {
             const index = this.state.items.findIndex(i => i.id === tempId);
             if (index !== -1) {
                 this.state.items[index] = {
-                    name: data.name || "Item",
+                    name: data.name || "Unknown Item",
                     price: data.price || 0.00,
                     icon: data.icon || "fa-box",
                     id: tempId,
@@ -102,7 +102,7 @@ class ReciboApp {
             const index = this.state.items.findIndex(i => i.id === tempId);
             if (index !== -1) {
                 this.state.items[index] = {
-                    name: "Manual Entry",
+                    name: "Manual Check Required",
                     price: 0.00,
                     icon: "fa-pen",
                     id: tempId,
@@ -136,7 +136,7 @@ class ReciboApp {
             context.fillStyle = '#333';
             context.fillRect(0, 0, canvas.width, canvas.height);
         }
-        return canvas.toDataURL('image/jpeg', 0.7);
+        return canvas.toDataURL('image/jpeg', 0.7); 
     }
 
     async animateJumpToBag(imageUrl) {
@@ -263,6 +263,7 @@ class ReciboApp {
         const badge = document.getElementById('scanner-badge');
         if (!badge) return;
         const count = this.state.items.length;
+        
         const isProcessing = this.state.items.some(i => i.isProcessing);
         
         if (isProcessing) {
@@ -337,7 +338,7 @@ class ReciboApp {
 
     async handleReceiptVerification() {
         document.getElementById('processing-title').innerText = "Reading Receipt...";
-        document.getElementById('processing-subtitle').innerText = "DeepSeek OCR Processing...";
+        document.getElementById('processing-subtitle').innerText = "Sending to DeepSeek...";
         this.switchView('view-processing');
 
         try {
@@ -345,7 +346,7 @@ class ReciboApp {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
-                    receiptImage: this.state.receiptImage,
+                    receiptImage: this.state.receiptImage, // Sending Image
                     userItems: this.state.items,
                     storeContext: this.state.storeName
                 })
@@ -354,8 +355,8 @@ class ReciboApp {
             const result = await response.json();
             this.state.verificationResult = result;
 
-            document.getElementById('processing-title').innerText = "Auditing...";
-            document.getElementById('processing-subtitle').innerText = "DeepSeek Logic Check";
+            document.getElementById('processing-title').innerText = "Verifying...";
+            document.getElementById('processing-subtitle').innerText = "Checking for overcharges";
             await this.wait(1000); 
 
             this.showResults();
