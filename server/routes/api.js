@@ -10,6 +10,7 @@ const openai = new OpenAI({
     apiKey: process.env.DEEPSEEK_API_KEY || 'mock-key'
 });
 
+// "deepseek-chat" currently points to DeepSeek-V3
 const MODEL_NAME = "deepseek-chat";
 
 router.get('/test', (req, res) => res.send('API is running'));
@@ -17,12 +18,11 @@ router.get('/test', (req, res) => res.send('API is running'));
 // @route   POST api/identify-item
 router.post('/identify-item', async (req, res) => {
     try {
-        const { image } = req.body; // Base64 string
+        const { image } = req.body; 
 
         if (!process.env.DEEPSEEK_API_KEY) {
-            // Mock Fallback
-            await new Promise(r => setTimeout(r, 2000)); // Fake delay
-            return res.json({ name: "Mock Item (Server)", price: 5.99, icon: "fa-box" });
+            await new Promise(r => setTimeout(r, 1500)); 
+            return res.json({ name: "Mock Item (No Key)", price: 5.99, icon: "fa-box" });
         }
 
         const response = await openai.chat.completions.create({
@@ -30,12 +30,12 @@ router.post('/identify-item', async (req, res) => {
             messages: [
                 {
                     role: "system",
-                    content: "You are a cashier scanner API. You output ONLY valid JSON. No markdown, no backticks."
+                    content: "You are a grocery scanner. Return ONLY valid JSON. No markdown."
                 },
                 {
                     role: "user",
                     content: [
-                        { type: "text", text: "Identify this grocery item. Return JSON with: 'name' (string), 'price' (estimated USD number), 'icon' (font-awesome class like 'fa-apple')." },
+                        { type: "text", text: "Identify this item. JSON keys: 'name', 'price' (number), 'icon' (font-awesome class)." },
                         { type: "image_url", image_url: { url: image } }
                     ]
                 }
@@ -44,15 +44,17 @@ router.post('/identify-item', async (req, res) => {
         });
 
         const content = response.choices[0].message.content;
-        // Clean up potential markdown code blocks from DeepSeek response
         const cleanJson = content.replace(/```json/g, '').replace(/```/g, '').trim();
-        
         res.json(JSON.parse(cleanJson));
 
     } catch (err) {
         console.error("DeepSeek Error:", err.message);
-        // Graceful degradation
-        res.status(500).json({ name: "Manual Check Needed", price: 0.00, icon: "fa-circle-question" });
+        // Fallback if Vision fails or key is missing
+        res.status(500).json({ 
+            name: "Manual Check Required", 
+            price: 0.00, 
+            icon: "fa-pen-to-square" 
+        });
     }
 });
 
@@ -62,16 +64,20 @@ router.post('/verify-receipt', async (req, res) => {
         const { receiptImage, userItems } = req.body;
 
         if (!process.env.DEEPSEEK_API_KEY) {
-            await new Promise(r => setTimeout(r, 2000));
             return res.json({ discrepancies: [], verified: false });
         }
 
         const prompt = `
-        Compare this receipt image against this digital cart: ${JSON.stringify(userItems)}.
-        Rules:
-        1. Extract items/prices from receipt image.
-        2. Compare with cart.
-        3. Return JSON: { "verified": boolean, "discrepancies": [ { "itemName": string, "issue": string } ] }
+        Audit this transaction.
+        My Digital Cart: ${JSON.stringify(userItems)}.
+        
+        Task:
+        1. Read items from the receipt image.
+        2. Compare against my cart.
+        3. Identify items on receipt NOT in cart (overcharge).
+        4. Identify items counted more times on receipt than in cart.
+        
+        Return JSON: { "verified": boolean, "discrepancies": [ { "itemName": string, "issue": string } ] }
         `;
 
         const response = await openai.chat.completions.create({
@@ -101,7 +107,7 @@ router.post('/verify-receipt', async (req, res) => {
             userItems: userItems,
             verificationResult: result
         });
-        newTransaction.save().catch(err => console.error("DB Error", err));
+        newTransaction.save().catch(err => console.error("DB Save Error", err));
 
         res.json(result);
 
