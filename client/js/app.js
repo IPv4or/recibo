@@ -1,10 +1,17 @@
+const MOCK_DATABASE = [
+    { name: "Avocados (Bag)", price: 5.99, icon: "fa-carrot" },
+    { name: "Oat Milk", price: 4.49, icon: "fa-bottle-water" },
+    { name: "Whole Wheat Bread", price: 3.25, icon: "fa-bread-slice" },
+    { name: "Ground Coffee", price: 12.99, icon: "fa-mug-hot" },
+    { name: "Dish Soap", price: 2.99, icon: "fa-pump-soap" }
+];
+
 class ReciboApp {
     constructor() {
         this.state = {
             items: [],
             editingId: null,
             receiptImage: null,
-            // We don't need apiKey here anymore, the server handles it!
             verificationResult: null 
         };
         this.stream = null;
@@ -12,8 +19,8 @@ class ReciboApp {
     }
 
     init() {
-        // Dev button can remain for debugging or be hidden
-        document.getElementById('devBtn').style.display = 'none'; 
+        const devBtn = document.getElementById('devBtn');
+        if(devBtn) devBtn.style.display = 'none'; 
     }
 
     switchView(viewId) {
@@ -24,7 +31,6 @@ class ReciboApp {
         if (viewId === 'view-scanner') this.startCamera('camera-feed');
         if (viewId === 'view-receipt-scanner') this.startCamera('receipt-camera-feed');
         if (viewId === 'view-list') this.renderCart();
-        // Don't clear items on landing view return, user might want to go back
     }
 
     async startCamera(videoElementId) {
@@ -55,15 +61,24 @@ class ReciboApp {
 
     async captureItem() {
         const video = document.getElementById('camera-feed');
-        
-        // 1. Get Image
         const imageUrl = this.getFrameFromVideo(video);
         
-        // 2. Visual Feedback (Animation)
-        // We start the animation immediately so it feels fast
+        // 1. Animate Photo
         this.animateJumpToBag(imageUrl);
 
-        // 3. Send to Server in Background
+        // 2. Add "Ghost" Item immediately (Loading State)
+        const tempId = Date.now();
+        this.state.items.push({
+            id: tempId,
+            name: "Identifying...",
+            price: 0.00,
+            icon: "fa-spinner fa-spin", // Loading icon
+            isProcessing: true
+        });
+        
+        this.updateScannerBadge();
+
+        // 3. Send to DeepSeek in Background
         try {
             const response = await fetch('/api/identify-item', {
                 method: 'POST',
@@ -73,25 +88,34 @@ class ReciboApp {
             
             const data = await response.json();
             
-            // Add the REAL item returned from AI
-            this.state.items.push({
-                name: data.name || "Unknown Item",
-                price: data.price || 0.00,
-                icon: data.icon || "fa-box",
-                id: Date.now()
-            });
+            // 4. Replace Ghost Item with Real Data
+            const index = this.state.items.findIndex(i => i.id === tempId);
+            if (index !== -1) {
+                this.state.items[index] = {
+                    name: data.name || "Unknown Item",
+                    price: data.price || 0.00,
+                    icon: data.icon || "fa-box",
+                    id: tempId, // Keep same ID or generate new
+                    isProcessing: false
+                };
+            }
             
+            // Update Badge (and View if we were looking at list)
             this.updateScannerBadge();
             
         } catch (error) {
             console.error("Error identifying item:", error);
-            // Fallback so the user flow doesn't break
-            this.state.items.push({
-                name: "Manual Check Required",
-                price: 0.00,
-                icon: "fa-circle-question",
-                id: Date.now()
-            });
+            // Update Ghost to Error
+            const index = this.state.items.findIndex(i => i.id === tempId);
+            if (index !== -1) {
+                this.state.items[index] = {
+                    name: "Manual Check Required",
+                    price: 0.00,
+                    icon: "fa-pen-to-square",
+                    id: tempId,
+                    isProcessing: false
+                };
+            }
             this.updateScannerBadge();
         }
     }
@@ -119,7 +143,7 @@ class ReciboApp {
             context.fillStyle = '#333';
             context.fillRect(0, 0, canvas.width, canvas.height);
         }
-        return canvas.toDataURL('image/jpeg', 0.8); // Compress slightly for faster upload
+        return canvas.toDataURL('image/jpeg', 0.6); // Higher compression for faster DeepSeek processing
     }
 
     async animateJumpToBag(imageUrl) {
@@ -214,15 +238,20 @@ class ReciboApp {
         if (this.state.editingId) {
             const index = this.state.items.findIndex(i => i.id === this.state.editingId);
             if (index !== -1) {
-                this.state.items[index].name = name;
-                this.state.items[index].price = price;
+                this.state.items[index] = {
+                    ...this.state.items[index],
+                    name: name,
+                    price: price,
+                    isProcessing: false 
+                };
             }
         } else {
             this.state.items.push({
                 name: name,
                 price: price,
                 icon: "fa-pen",
-                id: Date.now()
+                id: Date.now(),
+                isProcessing: false
             });
         }
 
@@ -241,7 +270,17 @@ class ReciboApp {
         const badge = document.getElementById('scanner-badge');
         if (!badge) return;
         const count = this.state.items.length;
-        badge.innerText = count;
+        
+        // Check if any items are still processing
+        const isProcessing = this.state.items.some(i => i.isProcessing);
+        
+        if (isProcessing) {
+            // Show a spinner or pulse if things are still loading
+            badge.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin text-[10px]"></i>';
+            badge.classList.add('bg-brand-400', 'text-black');
+        } else {
+            badge.innerText = count;
+        }
         
         if (count > 0) {
             badge.classList.remove('scale-0');
@@ -271,10 +310,16 @@ class ReciboApp {
         }
 
         let total = 0;
+        // Render items (Processing items will show as pulsing)
         [...this.state.items].reverse().forEach((item) => {
             total += item.price;
             const el = document.createElement('div');
-            el.className = 'bg-gray-900 p-4 rounded-2xl border border-gray-800 flex justify-between items-center animate-[fadeIn_0.3s_ease-out] group';
+            
+            // Conditional styling for "Processing" items
+            const processingClass = item.isProcessing ? 'opacity-70 animate-pulse border-brand-500/50' : 'border-gray-800';
+            
+            el.className = `bg-gray-900 p-4 rounded-2xl border ${processingClass} flex justify-between items-center animate-[fadeIn_0.3s_ease-out] group`;
+            
             el.innerHTML = `
                 <div class="flex items-center gap-4">
                     <div class="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center text-gray-400">
@@ -282,6 +327,7 @@ class ReciboApp {
                     </div>
                     <div>
                         <h4 class="font-bold text-white leading-tight">${item.name}</h4>
+                        ${item.isProcessing ? '<p class="text-xs text-brand-400 mt-1">Analyzing...</p>' : ''}
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
@@ -302,13 +348,11 @@ class ReciboApp {
     }
 
     async handleReceiptVerification() {
-        // UI State: Processing
         document.getElementById('processing-title').innerText = "Reading Receipt...";
-        document.getElementById('processing-subtitle').innerText = "Sending to cloud for analysis";
+        document.getElementById('processing-subtitle').innerText = "Sending to DeepSeek...";
         this.switchView('view-processing');
 
         try {
-            // Call Backend
             const response = await fetch('/api/verify-receipt', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -321,10 +365,9 @@ class ReciboApp {
             const result = await response.json();
             this.state.verificationResult = result;
 
-            // UI State: Verifying
             document.getElementById('processing-title').innerText = "Verifying...";
-            document.getElementById('processing-subtitle').innerText = "Comparing receipt against cart";
-            await this.wait(1000); // Short delay for UX pacing
+            document.getElementById('processing-subtitle').innerText = "Checking for overcharges";
+            await this.wait(1000); 
 
             this.showResults();
 
@@ -383,7 +426,6 @@ class ReciboApp {
             list.innerHTML = `<p class="text-gray-600 text-center text-sm italic">No errors detected.</p>`;
         }
 
-        // List confirmed items
         this.state.items.forEach(item => {
             const el = document.createElement('div');
             el.className = "flex justify-between text-sm py-2 border-b border-gray-800 text-gray-500";
@@ -397,7 +439,6 @@ class ReciboApp {
         const img = document.getElementById('dispute-image');
         img.src = this.state.receiptImage || ''; 
         const highlight = document.getElementById('dispute-highlight');
-        // Static for now, ideally dynamic from API coords
         highlight.style.top = '40%';
         highlight.style.left = '10%';
         highlight.style.width = '80%';
