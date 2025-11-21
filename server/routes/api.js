@@ -10,7 +10,7 @@ const openai = new OpenAI({
     apiKey: process.env.DEEPSEEK_API_KEY || 'mock-key'
 });
 
-// "deepseek-chat" currently points to DeepSeek-V3
+// "deepseek-chat" points to DeepSeek-V3 (Non-thinking, fast)
 const MODEL_NAME = "deepseek-chat";
 
 router.get('/test', (req, res) => res.send('API is running'));
@@ -18,24 +18,26 @@ router.get('/test', (req, res) => res.send('API is running'));
 // @route   POST api/identify-item
 router.post('/identify-item', async (req, res) => {
     try {
-        const { image } = req.body; 
+        const { image, storeContext } = req.body; 
 
         if (!process.env.DEEPSEEK_API_KEY) {
             await new Promise(r => setTimeout(r, 1500)); 
             return res.json({ name: "Mock Item (No Key)", price: 5.99, icon: "fa-box" });
         }
 
+        // Inject Store Context into System Prompt
+        const systemPrompt = `You are a cashier scanner at ${storeContext || 'a grocery store'}. Identify items accurately for this specific store context. Return ONLY valid JSON. No markdown.`;
+        
+        const userPrompt = `Identify this item from ${storeContext}. JSON keys: 'name' (be specific to brand if visible), 'price' (estimated number in USD for this store), 'icon' (font-awesome class).`;
+
         const response = await openai.chat.completions.create({
             model: MODEL_NAME,
             messages: [
-                {
-                    role: "system",
-                    content: "You are a grocery scanner. Return ONLY valid JSON. No markdown."
-                },
+                { role: "system", content: systemPrompt },
                 {
                     role: "user",
                     content: [
-                        { type: "text", text: "Identify this item. JSON keys: 'name', 'price' (number), 'icon' (font-awesome class)." },
+                        { type: "text", text: userPrompt },
                         { type: "image_url", image_url: { url: image } }
                     ]
                 }
@@ -49,7 +51,6 @@ router.post('/identify-item', async (req, res) => {
 
     } catch (err) {
         console.error("DeepSeek Error:", err.message);
-        // Fallback if Vision fails or key is missing
         res.status(500).json({ 
             name: "Manual Check Required", 
             price: 0.00, 
@@ -61,14 +62,14 @@ router.post('/identify-item', async (req, res) => {
 // @route   POST api/verify-receipt
 router.post('/verify-receipt', async (req, res) => {
     try {
-        const { receiptImage, userItems } = req.body;
+        const { receiptImage, userItems, storeContext } = req.body;
 
         if (!process.env.DEEPSEEK_API_KEY) {
             return res.json({ discrepancies: [], verified: false });
         }
 
         const prompt = `
-        Audit this transaction.
+        Audit this transaction at ${storeContext || 'a store'}.
         My Digital Cart: ${JSON.stringify(userItems)}.
         
         Task:
