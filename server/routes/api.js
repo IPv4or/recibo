@@ -4,18 +4,22 @@ const OpenAI = require('openai');
 const Transaction = require('../models/Transaction');
 require('dotenv').config();
 
-// Initialize OpenAI client pointing to DeepSeek
+// Initialize DeepSeek Client
 const openai = new OpenAI({
     baseURL: 'https://api.deepseek.com',
     apiKey: process.env.DEEPSEEK_API_KEY || 'mock-key'
 });
 
-// "deepseek-chat" points to DeepSeek-V3 (Non-thinking, fast)
-const MODEL_NAME = "deepseek-chat";
+// --- MODEL CONFIGURATION ---
+// Verify these exact slugs in your DeepSeek Platform documentation
+const MODEL_VISION = "deepseek-vl"; // For identifying items
+const MODEL_OCR    = "deepseek-ocr"; // For reading receipts
+const MODEL_LOGIC  = "deepseek-chat"; // For auditing logic (V3)
 
 router.get('/test', (req, res) => res.send('API is running'));
 
 // @route   POST api/identify-item
+// @desc    Uses DeepSeek-VL (Vision Language) to see the product
 router.post('/identify-item', async (req, res) => {
     try {
         const { image, storeContext } = req.body; 
@@ -25,24 +29,18 @@ router.post('/identify-item', async (req, res) => {
             return res.json({ name: "Mock Item (No Key)", price: 5.99, icon: "fa-box" });
         }
 
-        // Inject Store Context into System Prompt
-        const systemPrompt = `You are a cashier scanner at ${storeContext || 'a grocery store'}. Identify items accurately for this specific store context. Return ONLY valid JSON. No markdown.`;
-        
-        const userPrompt = `Identify this item from ${storeContext}. JSON keys: 'name' (be specific to brand if visible), 'price' (estimated number in USD for this store), 'icon' (font-awesome class).`;
-
         const response = await openai.chat.completions.create({
-            model: MODEL_NAME,
+            model: MODEL_VISION, // Special Vision Model
             messages: [
-                { role: "system", content: systemPrompt },
                 {
                     role: "user",
                     content: [
-                        { type: "text", text: userPrompt },
+                        { type: "text", text: `Identify this grocery item from ${storeContext || 'a store'}. Return ONLY a JSON object with: 'name' (string), 'price' (estimated number), 'icon' (font-awesome class).` },
                         { type: "image_url", image_url: { url: image } }
                     ]
                 }
             ],
-            max_tokens: 100
+            max_tokens: 150
         });
 
         const content = response.choices[0].message.content;
@@ -50,7 +48,7 @@ router.post('/identify-item', async (req, res) => {
         res.json(JSON.parse(cleanJson));
 
     } catch (err) {
-        console.error("DeepSeek Error:", err.message);
+        console.error("DeepSeek VL Error:", err.message);
         res.status(500).json({ 
             name: "Manual Check Required", 
             price: 0.00, 
@@ -60,6 +58,7 @@ router.post('/identify-item', async (req, res) => {
 });
 
 // @route   POST api/verify-receipt
+// @desc    Multi-Step: OCR -> Logic
 router.post('/verify-receipt', async (req, res) => {
     try {
         const { receiptImage, userItems, storeContext } = req.body;
@@ -68,52 +67,83 @@ router.post('/verify-receipt', async (req, res) => {
             return res.json({ discrepancies: [], verified: false });
         }
 
-        const prompt = `
+        // STEP 1: Extract Text using DeepSeek-OCR
+        // We prompt the specialized model to just transcribe
+        let receiptText = "";
+        try {
+            const ocrResponse = await openai.chat.completions.create({
+                model: MODEL_OCR,
+                messages: [
+                    {
+                        role: "user",
+                        content: [
+                            { type: "text", text: "Transcribe this receipt into structured text. List every item and price." },
+                            { type: "image_url", image_url: { url: receiptImage } }
+                        ]
+                    }
+                ],
+                max_tokens: 1000
+            });
+            receiptText = ocrResponse.choices[0].message.content;
+        } catch (ocrErr) {
+            console.error("OCR Model failed, falling back to VL:", ocrErr.message);
+            // Fallback: Try to use the Vision model if OCR model fails/doesn't exist
+            const fallbackResponse = await openai.chat.completions.create({
+                model: MODEL_VISION,
+                messages: [
+                    {
+                        role: "user",
+                        content: [
+                            { type: "text", text: "Read this receipt. Output all text found." },
+                            { type: "image_url", image_url: { url: receiptImage } }
+                        ]
+                    }
+                ]
+            });
+            receiptText = fallbackResponse.choices[0].message.content;
+        }
+
+        // STEP 2: Audit using DeepSeek-Chat (V3)
+        // Now we process the text with the high-intelligence model
+        const logicPrompt = `
         Audit this transaction at ${storeContext || 'a store'}.
-        My Digital Cart: ${JSON.stringify(userItems)}.
+        
+        User's App Cart: ${JSON.stringify(userItems)}
+        
+        Receipt Scan Results:
+        ${receiptText}
         
         Task:
-        1. Read items from the receipt image.
-        2. Compare against my cart.
-        3. Identify items on receipt NOT in cart (overcharge).
-        4. Identify items counted more times on receipt than in cart.
+        1. Match items fuzzily (e.g. "Bananas" == "Organic Banana").
+        2. Identify items on the receipt that are NOT in the App Cart (Overcharge).
+        3. Identify double scans (appearing more times on receipt than in cart).
         
-        Return JSON: { "verified": boolean, "discrepancies": [ { "itemName": string, "issue": string } ] }
+        Return JSON ONLY: { "verified": boolean, "discrepancies": [ { "itemName": string, "issue": string } ] }
         `;
 
-        const response = await openai.chat.completions.create({
-            model: MODEL_NAME,
+        const auditResponse = await openai.chat.completions.create({
+            model: MODEL_LOGIC,
             messages: [
-                {
-                    role: "system",
-                    content: "You are a receipt auditor. Output valid JSON only."
-                },
-                {
-                    role: "user",
-                    content: [
-                        { type: "text", text: prompt },
-                        { type: "image_url", image_url: { url: receiptImage } }
-                    ]
-                }
+                { role: "system", content: "You are a strict auditor API. Output JSON only." },
+                { role: "user", content: logicPrompt }
             ],
-            max_tokens: 1000
+            response_format: { type: 'json_object' }
         });
 
-        const content = response.choices[0].message.content;
-        const cleanJson = content.replace(/```json/g, '').replace(/```/g, '').trim();
-        const result = JSON.parse(cleanJson);
+        const auditContent = auditResponse.choices[0].message.content;
+        const result = JSON.parse(auditContent);
 
-        // Async DB Save
+        // Save Transaction
         const newTransaction = new Transaction({
             userItems: userItems,
             verificationResult: result
         });
-        newTransaction.save().catch(err => console.error("DB Save Error", err));
+        newTransaction.save().catch(err => console.error("DB Error", err));
 
         res.json(result);
 
     } catch (err) {
-        console.error("DeepSeek Error:", err.message);
+        console.error("DeepSeek Pipeline Error:", err.message);
         res.status(500).send('Server Error');
     }
 });
