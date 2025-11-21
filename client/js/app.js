@@ -58,10 +58,7 @@ class ReciboApp {
     // --- OCR FUNCTION ---
     async performOCR(imageData) {
         try {
-            // Using Tesseract.js from the CDN
-            const result = await Tesseract.recognize(imageData, 'eng', {
-                // logger: m => console.log(m) // Uncomment to see OCR progress in console
-            });
+            const result = await Tesseract.recognize(imageData, 'eng');
             return result.data.text;
         } catch (error) {
             console.error("OCR Error:", error);
@@ -75,28 +72,23 @@ class ReciboApp {
         
         this.animateJumpToBag(imageUrl);
 
-        // Ghost Item
         const tempId = Date.now();
         this.state.items.push({
             id: tempId,
-            name: "Reading Text...",
+            name: "Reading Label...",
             price: 0.00,
             icon: "fa-spinner fa-spin",
             isProcessing: true
         });
-        
         this.updateScannerBadge();
 
         // 1. OCR (Frontend)
         const scannedText = await this.performOCR(imageUrl);
-        console.log("OCR Result:", scannedText); // Debug log
         
-        // If OCR fails to find meaningful text
         if (!scannedText || scannedText.trim().length < 3) {
              this.updateItemState(tempId, {
                  name: "Couldn't Read Text",
-                 price: 0.00,
-                 icon: "fa-eye-slash",
+                 icon: "fa-pen",
                  isProcessing: false
              });
              return;
@@ -112,7 +104,6 @@ class ReciboApp {
                     storeContext: this.state.storeName 
                 })
             });
-            
             const data = await response.json();
             
             this.updateItemState(tempId, {
@@ -123,10 +114,8 @@ class ReciboApp {
             });
             
         } catch (error) {
-            console.error("API Error:", error);
             this.updateItemState(tempId, {
                 name: "Manual Check Required",
-                icon: "fa-circle-exclamation",
                 isProcessing: false
             });
         }
@@ -158,7 +147,6 @@ class ReciboApp {
 
         // 1. OCR (Frontend)
         const receiptText = await this.performOCR(imageUrl);
-        console.log("Receipt OCR:", receiptText);
 
         document.getElementById('processing-title').innerText = "Auditing...";
         document.getElementById('processing-subtitle').innerText = "DeepSeek analyzing...";
@@ -181,7 +169,7 @@ class ReciboApp {
 
         } catch (error) {
             console.error("Verification error:", error);
-            alert("Failed to verify receipt. Please try again.");
+            alert("Verification failed.");
             this.switchView('view-list');
         }
     }
@@ -198,58 +186,41 @@ class ReciboApp {
             context.fillStyle = '#333';
             context.fillRect(0, 0, canvas.width, canvas.height);
         }
-        // High quality for OCR
         return canvas.toDataURL('image/jpeg', 0.9); 
     }
 
+    // ... (Animation and Manual Edit functions) ...
     async animateJumpToBag(imageUrl) {
         const flyImg = document.createElement('img');
         flyImg.src = imageUrl;
         flyImg.className = 'flying-item';
-        
         const startX = window.innerWidth / 2;
         const startY = window.innerHeight / 2;
-        const startSize = 250; 
-
-        flyImg.style.width = `${startSize}px`;
-        flyImg.style.height = `${startSize}px`;
+        flyImg.style.width = `250px`;
+        flyImg.style.height = `250px`;
         flyImg.style.opacity = '1';
         flyImg.style.left = `${startX}px`;
         flyImg.style.top = `${startY}px`;
-        
         document.body.appendChild(flyImg);
-
         const bagBtn = document.getElementById('scanner-bag-btn');
         const rect = bagBtn.getBoundingClientRect();
         const targetX = rect.left + (rect.width / 2);
         const targetY = rect.top + (rect.height / 2);
-
         const duration = 800; 
         const startTime = performance.now();
-
         return new Promise(resolve => {
             const animate = (currentTime) => {
                 const elapsed = currentTime - startTime;
                 const progress = Math.min(elapsed / duration, 1);
                 const ease = progress < .5 ? 2 * progress * progress : -1 + (4 - 2 * progress) * progress;
                 const currentX = startX + (targetX - startX) * ease;
-                const linearY = startY + (targetY - startY) * ease;
-                const jumpHeight = 150;
-                const jumpOffset = Math.sin(progress * Math.PI) * jumpHeight;
-                const currentY = linearY - jumpOffset;
-                const currentSize = startSize - ((startSize - 20) * ease);
-
+                const currentY = startY + (targetY - startY) * ease - (Math.sin(progress * Math.PI) * 150);
+                const currentSize = 250 - ((250 - 20) * ease);
                 flyImg.style.left = `${currentX}px`;
                 flyImg.style.top = `${currentY}px`;
                 flyImg.style.width = `${currentSize}px`;
                 flyImg.style.height = `${currentSize}px`;
-
-                if (progress < 1) {
-                    requestAnimationFrame(animate);
-                } else {
-                    flyImg.remove();
-                    resolve();
-                }
+                if (progress < 1) { requestAnimationFrame(animate); } else { flyImg.remove(); resolve(); }
             };
             requestAnimationFrame(animate);
         });
@@ -260,9 +231,7 @@ class ReciboApp {
         const nameInput = document.getElementById('manual-name');
         const priceInput = document.getElementById('manual-price');
         const title = document.getElementById('modal-title');
-
         modal.classList.remove('hidden');
-
         if (id) {
             const item = this.state.items.find(i => i.id === id);
             if (item) {
@@ -290,27 +259,14 @@ class ReciboApp {
         const priceInput = document.getElementById('manual-price');
         const name = nameInput.value || "Item";
         const price = parseFloat(priceInput.value) || 0;
-
         if (this.state.editingId) {
             const index = this.state.items.findIndex(i => i.id === this.state.editingId);
             if (index !== -1) {
-                this.state.items[index] = {
-                    ...this.state.items[index],
-                    name: name,
-                    price: price,
-                    isProcessing: false 
-                };
+                this.state.items[index] = { ...this.state.items[index], name: name, price: price };
             }
         } else {
-            this.state.items.push({
-                name: name,
-                price: price,
-                icon: "fa-pen",
-                id: Date.now(),
-                isProcessing: false
-            });
+            this.state.items.push({ name: name, price: price, icon: "fa-pen", id: Date.now(), isProcessing: false });
         }
-
         this.closeManualAdd();
         this.renderCart();
         this.updateScannerBadge();
@@ -326,9 +282,7 @@ class ReciboApp {
         const badge = document.getElementById('scanner-badge');
         if (!badge) return;
         const count = this.state.items.length;
-        
         const isProcessing = this.state.items.some(i => i.isProcessing);
-        
         if (isProcessing) {
             badge.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin text-[10px]"></i>';
             badge.classList.add('bg-brand-400', 'text-black');
@@ -336,7 +290,6 @@ class ReciboApp {
             badge.innerText = count;
             badge.classList.remove('bg-brand-400', 'text-black');
         }
-        
         if (count > 0) {
             badge.classList.remove('scale-0');
             badge.classList.add('scale-100');
@@ -349,52 +302,29 @@ class ReciboApp {
         const container = document.getElementById('cart-items');
         const countEl = document.getElementById('item-count');
         const totalEl = document.getElementById('cart-total');
-        
         container.innerHTML = '';
-
         if (this.state.items.length === 0) {
-            container.innerHTML = `
-                <div class="flex flex-col items-center justify-center h-64 text-gray-700 mt-12">
-                    <i class="fa-solid fa-basket-shopping text-5xl mb-4 opacity-20"></i>
-                    <p>Your cart is empty.</p>
-                </div>
-            `;
-            countEl.innerText = '0';
-            totalEl.innerText = '$0.00';
-            return;
+            container.innerHTML = `<div class="flex flex-col items-center justify-center h-64 text-gray-700 mt-12"><i class="fa-solid fa-basket-shopping text-5xl mb-4 opacity-20"></i><p>Your cart is empty.</p></div>`;
+            countEl.innerText = '0'; totalEl.innerText = '$0.00'; return;
         }
-
         let total = 0;
         [...this.state.items].reverse().forEach((item) => {
             if (!item.isProcessing) total += item.price;
-            
             const el = document.createElement('div');
             const processingClass = item.isProcessing ? 'opacity-70 animate-pulse border-brand-500/50' : 'border-gray-800';
             el.className = `bg-gray-900 p-4 rounded-2xl border ${processingClass} flex justify-between items-center animate-[fadeIn_0.3s_ease-out] group`;
-            
             el.innerHTML = `
                 <div class="flex items-center gap-4">
-                    <div class="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center text-gray-400">
-                        <i class="fa-solid ${item.icon}"></i>
-                    </div>
-                    <div>
-                        <h4 class="font-bold text-white leading-tight">${item.name}</h4>
-                        ${item.isProcessing ? '<p class="text-xs text-brand-400 mt-1">Analyzing...</p>' : ''}
-                    </div>
+                    <div class="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center text-gray-400"><i class="fa-solid ${item.icon}"></i></div>
+                    <div><h4 class="font-bold text-white leading-tight">${item.name}</h4>${item.isProcessing ? '<p class="text-xs text-brand-400 mt-1">Analyzing...</p>' : ''}</div>
                 </div>
                 <div class="flex items-center gap-2">
                     <div class="font-medium text-white mr-2">$${item.price.toFixed(2)}</div>
-                    <button onclick="app.openManualAdd(${item.id})" class="w-8 h-8 rounded-full bg-gray-800 text-gray-400 flex items-center justify-center hover:bg-gray-700 hover:text-white transition-colors">
-                        <i class="fa-solid fa-pen text-xs"></i>
-                    </button>
-                    <button onclick="app.deleteItem(${item.id})" class="w-8 h-8 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center hover:bg-red-500 hover:text-white transition-colors">
-                        <i class="fa-solid fa-trash-can text-xs"></i>
-                    </button>
-                </div>
-            `;
+                    <button onclick="app.openManualAdd(${item.id})" class="w-8 h-8 rounded-full bg-gray-800 text-gray-400 flex items-center justify-center hover:bg-gray-700 hover:text-white transition-colors"><i class="fa-solid fa-pen text-xs"></i></button>
+                    <button onclick="app.deleteItem(${item.id})" class="w-8 h-8 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center hover:bg-red-500 hover:text-white transition-colors"><i class="fa-solid fa-trash-can text-xs"></i></button>
+                </div>`;
             container.appendChild(el);
         });
-
         countEl.innerText = this.state.items.length;
         totalEl.innerText = '$' + total.toFixed(2);
     }
@@ -403,50 +333,26 @@ class ReciboApp {
         this.switchView('view-results');
         const result = this.state.verificationResult;
         const hasIssues = result && result.discrepancies && result.discrepancies.length > 0;
-        
         const container = document.getElementById('status-card');
         const list = document.getElementById('discrepancies-list');
         const verifiedList = document.getElementById('verified-list-preview');
-        
-        list.innerHTML = '';
-        verifiedList.innerHTML = '';
+        list.innerHTML = ''; verifiedList.innerHTML = '';
         document.getElementById('timestamp-display').innerText = new Date().toLocaleDateString('en-US', { hour: 'numeric', minute: 'numeric' });
 
         if (hasIssues) {
             container.className = "bg-red-500/10 rounded-2xl p-6 mb-6 border border-red-500/20 flex flex-col gap-4";
-            container.innerHTML = `
-                <div class="flex items-center gap-3">
-                    <div class="bg-red-500 text-white w-10 h-10 rounded-full flex items-center justify-center text-lg shadow-lg shadow-red-500/20"><i class="fa-solid fa-exclamation"></i></div>
-                    <div><h3 class="font-bold text-white text-lg">Discrepancies Found</h3><p class="text-red-200 text-sm">${result.discrepancies.length} potential error(s).</p></div>
-                </div>
-            `;
-            
+            container.innerHTML = `<div class="flex items-center gap-3"><div class="bg-red-500 text-white w-10 h-10 rounded-full flex items-center justify-center text-lg shadow-lg shadow-red-500/20"><i class="fa-solid fa-exclamation"></i></div><div><h3 class="font-bold text-white text-lg">Discrepancies Found</h3><p class="text-red-200 text-sm">${result.discrepancies.length} potential error(s).</p></div></div>`;
             result.discrepancies.forEach(issue => {
                 const el = document.createElement('div');
                 el.className = "bg-gray-900 rounded-xl p-4 border-l-4 border-red-500";
-                el.innerHTML = `
-                    <div class="flex justify-between items-start mb-2">
-                        <h4 class="font-bold text-white text-lg">${issue.itemName || "Unknown Item"}</h4>
-                        <span class="bg-red-500/20 text-red-400 text-xs font-bold px-2 py-1 rounded">Error</span>
-                    </div>
-                    <p class="text-gray-400 text-sm leading-relaxed mb-4">${issue.issue || issue.message}</p>
-                    <div class="flex gap-3">
-                        <button onclick="app.showDispute()" class="flex-1 bg-white text-black py-2 rounded-lg font-bold text-sm hover:bg-gray-200">Dispute Charge</button>
-                        <button class="px-4 py-2 border border-gray-700 rounded-lg text-gray-400 text-sm font-medium hover:text-white">Dismiss</button>
-                    </div>
-                `;
+                el.innerHTML = `<div class="flex justify-between items-start mb-2"><h4 class="font-bold text-white text-lg">${issue.itemName || "Unknown Item"}</h4><span class="bg-red-500/20 text-red-400 text-xs font-bold px-2 py-1 rounded">Error</span></div><p class="text-gray-400 text-sm leading-relaxed mb-4">${issue.issue || issue.message}</p><div class="flex gap-3"><button onclick="app.showDispute()" class="flex-1 bg-white text-black py-2 rounded-lg font-bold text-sm hover:bg-gray-200">Dispute Charge</button><button class="px-4 py-2 border border-gray-700 rounded-lg text-gray-400 text-sm font-medium hover:text-white">Dismiss</button></div>`;
                 list.appendChild(el);
             });
-
         } else {
             container.className = "bg-brand-900/20 rounded-2xl p-6 mb-6 border border-brand-500/20 flex items-center gap-4";
-            container.innerHTML = `
-                <div class="bg-brand-500 text-black w-12 h-12 rounded-full flex items-center justify-center text-xl shadow-lg shadow-brand-500/20"><i class="fa-solid fa-check"></i></div>
-                <div><h3 class="font-bold text-white text-lg">All Clear</h3><p class="text-brand-400 text-sm">Receipt matches your cart perfectly.</p></div>
-            `;
+            container.innerHTML = `<div class="bg-brand-500 text-black w-12 h-12 rounded-full flex items-center justify-center text-xl shadow-lg shadow-brand-500/20"><i class="fa-solid fa-check"></i></div><div><h3 class="font-bold text-white text-lg">All Clear</h3><p class="text-brand-400 text-sm">Receipt matches your cart perfectly.</p></div>`;
             list.innerHTML = `<p class="text-gray-600 text-center text-sm italic">No errors detected.</p>`;
         }
-
         this.state.items.forEach(item => {
             const el = document.createElement('div');
             el.className = "flex justify-between text-sm py-2 border-b border-gray-800 text-gray-500";
@@ -460,10 +366,7 @@ class ReciboApp {
         const img = document.getElementById('dispute-image');
         img.src = this.state.receiptImage || ''; 
         const highlight = document.getElementById('dispute-highlight');
-        highlight.style.top = '40%';
-        highlight.style.left = '10%';
-        highlight.style.width = '80%';
-        highlight.style.height = '60px';
+        highlight.style.top = '40%'; highlight.style.left = '10%'; highlight.style.width = '80%'; highlight.style.height = '60px';
     }
 
     wait(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
