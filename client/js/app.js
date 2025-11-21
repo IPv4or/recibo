@@ -2,7 +2,7 @@ class ReciboApp {
     constructor() {
         this.state = {
             items: [],
-            storeName: "", // New State
+            storeName: "",
             editingId: null,
             receiptImage: null,
             verificationResult: null 
@@ -47,9 +47,8 @@ class ReciboApp {
     }
 
     startShopping() {
-        // Capture Store Name
         const storeInput = document.getElementById('store-input');
-        this.state.storeName = storeInput.value.trim() || "";
+        this.state.storeName = storeInput.value.trim() || "Generic Store";
 
         this.state.items = [];
         this.updateScannerBadge();
@@ -62,11 +61,10 @@ class ReciboApp {
         
         this.animateJumpToBag(imageUrl);
 
-        // Ghost Item
         const tempId = Date.now();
         this.state.items.push({
             id: tempId,
-            name: "Identifying...",
+            name: "Analyzing...",
             price: 0.00,
             icon: "fa-spinner fa-spin",
             isProcessing: true
@@ -80,7 +78,7 @@ class ReciboApp {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
                     image: imageUrl,
-                    storeContext: this.state.storeName // Sending Context
+                    storeContext: this.state.storeName 
                 })
             });
             
@@ -89,7 +87,7 @@ class ReciboApp {
             const index = this.state.items.findIndex(i => i.id === tempId);
             if (index !== -1) {
                 this.state.items[index] = {
-                    name: data.name || "Unknown Item",
+                    name: data.name || "Item",
                     price: data.price || 0.00,
                     icon: data.icon || "fa-box",
                     id: tempId,
@@ -104,9 +102,9 @@ class ReciboApp {
             const index = this.state.items.findIndex(i => i.id === tempId);
             if (index !== -1) {
                 this.state.items[index] = {
-                    name: "Manual Check Required",
+                    name: "Manual Entry",
                     price: 0.00,
-                    icon: "fa-pen-to-square",
+                    icon: "fa-pen",
                     id: tempId,
                     isProcessing: false
                 };
@@ -138,7 +136,7 @@ class ReciboApp {
             context.fillStyle = '#333';
             context.fillRect(0, 0, canvas.width, canvas.height);
         }
-        return canvas.toDataURL('image/jpeg', 0.6); 
+        return canvas.toDataURL('image/jpeg', 0.7);
     }
 
     async animateJumpToBag(imageUrl) {
@@ -265,7 +263,6 @@ class ReciboApp {
         const badge = document.getElementById('scanner-badge');
         if (!badge) return;
         const count = this.state.items.length;
-        
         const isProcessing = this.state.items.some(i => i.isProcessing);
         
         if (isProcessing) {
@@ -340,7 +337,7 @@ class ReciboApp {
 
     async handleReceiptVerification() {
         document.getElementById('processing-title').innerText = "Reading Receipt...";
-        document.getElementById('processing-subtitle').innerText = "Sending to DeepSeek...";
+        document.getElementById('processing-subtitle').innerText = "DeepSeek OCR Processing...";
         this.switchView('view-processing');
 
         try {
@@ -350,15 +347,15 @@ class ReciboApp {
                 body: JSON.stringify({ 
                     receiptImage: this.state.receiptImage,
                     userItems: this.state.items,
-                    storeContext: this.state.storeName // Sending Context
+                    storeContext: this.state.storeName
                 })
             });
 
             const result = await response.json();
             this.state.verificationResult = result;
 
-            document.getElementById('processing-title').innerText = "Verifying...";
-            document.getElementById('processing-subtitle').innerText = "Checking for overcharges";
+            document.getElementById('processing-title').innerText = "Auditing...";
+            document.getElementById('processing-subtitle').innerText = "DeepSeek Logic Check";
             await this.wait(1000); 
 
             this.showResults();
