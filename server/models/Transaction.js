@@ -5,6 +5,7 @@ const TransactionSchema = new mongoose.Schema({
         type: Date,
         default: Date.now
     },
+    storeContext: String,
     userItems: [{
         name: String,
         price: Number,
