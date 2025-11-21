@@ -55,16 +55,31 @@ class ReciboApp {
         this.switchView('view-scanner');
     }
 
+    // --- OCR FUNCTION ---
+    async performOCR(imageData) {
+        try {
+            // Using Tesseract.js from the CDN
+            const result = await Tesseract.recognize(imageData, 'eng', {
+                // logger: m => console.log(m) // Uncomment to see OCR progress in console
+            });
+            return result.data.text;
+        } catch (error) {
+            console.error("OCR Error:", error);
+            return "";
+        }
+    }
+
     async captureItem() {
         const video = document.getElementById('camera-feed');
         const imageUrl = this.getFrameFromVideo(video);
         
         this.animateJumpToBag(imageUrl);
 
+        // Ghost Item
         const tempId = Date.now();
         this.state.items.push({
             id: tempId,
-            name: "Analyzing Image...",
+            name: "Reading Text...",
             price: 0.00,
             icon: "fa-spinner fa-spin",
             isProcessing: true
@@ -72,45 +87,57 @@ class ReciboApp {
         
         this.updateScannerBadge();
 
+        // 1. OCR (Frontend)
+        const scannedText = await this.performOCR(imageUrl);
+        console.log("OCR Result:", scannedText); // Debug log
+        
+        // If OCR fails to find meaningful text
+        if (!scannedText || scannedText.trim().length < 3) {
+             this.updateItemState(tempId, {
+                 name: "Couldn't Read Text",
+                 price: 0.00,
+                 icon: "fa-eye-slash",
+                 isProcessing: false
+             });
+             return;
+        }
+
+        // 2. DeepSeek (Backend)
         try {
             const response = await fetch('/api/identify-item', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
-                    image: imageUrl, // Sending raw image
+                    scannedText: scannedText,
                     storeContext: this.state.storeName 
                 })
             });
             
             const data = await response.json();
             
-            const index = this.state.items.findIndex(i => i.id === tempId);
-            if (index !== -1) {
-                this.state.items[index] = {
-                    name: data.name || "Unknown Item",
-                    price: data.price || 0.00,
-                    icon: data.icon || "fa-box",
-                    id: tempId,
-                    isProcessing: false
-                };
-            }
-            
-            this.updateScannerBadge();
+            this.updateItemState(tempId, {
+                name: data.name || "Unknown Item",
+                price: data.price || 0.00,
+                icon: data.icon || "fa-box",
+                isProcessing: false
+            });
             
         } catch (error) {
-            console.error("Error identifying item:", error);
-            const index = this.state.items.findIndex(i => i.id === tempId);
-            if (index !== -1) {
-                this.state.items[index] = {
-                    name: "Manual Check Required",
-                    price: 0.00,
-                    icon: "fa-pen",
-                    id: tempId,
-                    isProcessing: false
-                };
-            }
-            this.updateScannerBadge();
+            console.error("API Error:", error);
+            this.updateItemState(tempId, {
+                name: "Manual Check Required",
+                icon: "fa-circle-exclamation",
+                isProcessing: false
+            });
         }
+    }
+
+    updateItemState(id, newState) {
+        const index = this.state.items.findIndex(i => i.id === id);
+        if (index !== -1) {
+            this.state.items[index] = { ...this.state.items[index], ...newState };
+        }
+        this.updateScannerBadge();
     }
 
     startReceiptScan() {
@@ -121,7 +148,42 @@ class ReciboApp {
         const video = document.getElementById('receipt-camera-feed');
         const imageUrl = this.getFrameFromVideo(video);
         this.state.receiptImage = imageUrl;
-        this.handleReceiptVerification();
+        this.handleReceiptVerification(imageUrl);
+    }
+
+    async handleReceiptVerification(imageUrl) {
+        document.getElementById('processing-title').innerText = "Scanning Receipt...";
+        document.getElementById('processing-subtitle').innerText = "Reading text...";
+        this.switchView('view-processing');
+
+        // 1. OCR (Frontend)
+        const receiptText = await this.performOCR(imageUrl);
+        console.log("Receipt OCR:", receiptText);
+
+        document.getElementById('processing-title').innerText = "Auditing...";
+        document.getElementById('processing-subtitle').innerText = "DeepSeek analyzing...";
+
+        // 2. DeepSeek (Backend)
+        try {
+            const response = await fetch('/api/verify-receipt', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    receiptText: receiptText,
+                    userItems: this.state.items,
+                    storeContext: this.state.storeName
+                })
+            });
+
+            const result = await response.json();
+            this.state.verificationResult = result;
+            this.showResults();
+
+        } catch (error) {
+            console.error("Verification error:", error);
+            alert("Failed to verify receipt. Please try again.");
+            this.switchView('view-list');
+        }
     }
 
     getFrameFromVideo(video) {
@@ -136,7 +198,8 @@ class ReciboApp {
             context.fillStyle = '#333';
             context.fillRect(0, 0, canvas.width, canvas.height);
         }
-        return canvas.toDataURL('image/jpeg', 0.7); 
+        // High quality for OCR
+        return canvas.toDataURL('image/jpeg', 0.9); 
     }
 
     async animateJumpToBag(imageUrl) {
@@ -334,38 +397,6 @@ class ReciboApp {
 
         countEl.innerText = this.state.items.length;
         totalEl.innerText = '$' + total.toFixed(2);
-    }
-
-    async handleReceiptVerification() {
-        document.getElementById('processing-title').innerText = "Reading Receipt...";
-        document.getElementById('processing-subtitle').innerText = "Sending to DeepSeek...";
-        this.switchView('view-processing');
-
-        try {
-            const response = await fetch('/api/verify-receipt', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    receiptImage: this.state.receiptImage, // Sending Image
-                    userItems: this.state.items,
-                    storeContext: this.state.storeName
-                })
-            });
-
-            const result = await response.json();
-            this.state.verificationResult = result;
-
-            document.getElementById('processing-title').innerText = "Verifying...";
-            document.getElementById('processing-subtitle').innerText = "Checking for overcharges";
-            await this.wait(1000); 
-
-            this.showResults();
-
-        } catch (error) {
-            console.error("Verification error:", error);
-            alert("Failed to verify receipt. Please try again.");
-            this.switchView('view-list');
-        }
     }
 
     showResults() {
