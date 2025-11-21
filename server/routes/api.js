@@ -1,52 +1,58 @@
 const express = require('express');
 const router = express.Router();
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-const Transaction = require('../models/Transaction'); 
+const OpenAI = require('openai');
+const Transaction = require('../models/Transaction');
 require('dotenv').config();
 
-// Initialize Gemini AI
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'mock-key');
+// Initialize OpenAI client pointing to DeepSeek
+const openai = new OpenAI({
+    baseURL: 'https://api.deepseek.com',
+    apiKey: process.env.DEEPSEEK_API_KEY || 'mock-key'
+});
 
-// Use the new 2.5 Flash model
-// Note: If this is a preview model, sometimes it requires 'gemini-2.5-flash-preview'
-// But based on your screenshot, it is listed exactly as:
-const MODEL_NAME = "gemini-2.5-flash"; 
+const MODEL_NAME = "deepseek-chat";
 
 router.get('/test', (req, res) => res.send('API is running'));
 
 // @route   POST api/identify-item
 router.post('/identify-item', async (req, res) => {
     try {
-        const { image } = req.body; 
-        
-        if (!process.env.GEMINI_API_KEY) {
+        const { image } = req.body; // Base64 string
+
+        if (!process.env.DEEPSEEK_API_KEY) {
+            // Mock Fallback
+            await new Promise(r => setTimeout(r, 2000)); // Fake delay
             return res.json({ name: "Mock Item (Server)", price: 5.99, icon: "fa-box" });
         }
 
-        const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+        const response = await openai.chat.completions.create({
+            model: MODEL_NAME,
+            messages: [
+                {
+                    role: "system",
+                    content: "You are a cashier scanner API. You output ONLY valid JSON. No markdown, no backticks."
+                },
+                {
+                    role: "user",
+                    content: [
+                        { type: "text", text: "Identify this grocery item. Return JSON with: 'name' (string), 'price' (estimated USD number), 'icon' (font-awesome class like 'fa-apple')." },
+                        { type: "image_url", image_url: { url: image } }
+                    ]
+                }
+            ],
+            max_tokens: 100
+        });
+
+        const content = response.choices[0].message.content;
+        // Clean up potential markdown code blocks from DeepSeek response
+        const cleanJson = content.replace(/```json/g, '').replace(/```/g, '').trim();
         
-        const prompt = "Identify this grocery item. Return ONLY a JSON object with fields: 'name' (string), 'price' (estimated number in USD), and 'icon' (a font-awesome class string like 'fa-apple'). Do not include markdown formatting.";
-        
-        const base64Data = image.replace(/^data:image\/\w+;base64,/, "");
-        
-        const result = await model.generateContent([
-            prompt, 
-            { inlineData: { data: base64Data, mimeType: "image/jpeg" }}
-        ]);
-        
-        const response = await result.response;
-        const text = response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-        
-        res.json(JSON.parse(text));
+        res.json(JSON.parse(cleanJson));
 
     } catch (err) {
-        console.error("AI Error:", err.message);
-        // Fallback for rate limits or model errors
-        res.status(500).json({ 
-            name: "Item (Manual Check)", 
-            price: 0.00, 
-            icon: "fa-circle-exclamation" 
-        });
+        console.error("DeepSeek Error:", err.message);
+        // Graceful degradation
+        res.status(500).json({ name: "Manual Check Needed", price: 0.00, icon: "fa-circle-question" });
     }
 });
 
@@ -55,47 +61,52 @@ router.post('/verify-receipt', async (req, res) => {
     try {
         const { receiptImage, userItems } = req.body;
 
-        if (!process.env.GEMINI_API_KEY) {
+        if (!process.env.DEEPSEEK_API_KEY) {
+            await new Promise(r => setTimeout(r, 2000));
             return res.json({ discrepancies: [], verified: false });
         }
 
-        const model = genAI.getGenerativeModel({ model: MODEL_NAME });
-
         const prompt = `
-        Analyze this receipt image. I have a digital cart with these items: ${JSON.stringify(userItems)}.
-        1. Extract all line items and prices from the receipt.
-        2. Compare the receipt items against my digital cart.
-        3. Return a JSON object.
-        Format: { "verified": boolean, "discrepancies": [ { "itemName": string, "issue": string } ] }
-        If the receipt has an item count or total price that doesn't match the cart, flag it.
+        Compare this receipt image against this digital cart: ${JSON.stringify(userItems)}.
+        Rules:
+        1. Extract items/prices from receipt image.
+        2. Compare with cart.
+        3. Return JSON: { "verified": boolean, "discrepancies": [ { "itemName": string, "issue": string } ] }
         `;
 
-        const base64Data = receiptImage.replace(/^data:image\/\w+;base64,/, "");
-        
-        const result = await model.generateContent([
-            prompt, 
-            { inlineData: { data: base64Data, mimeType: "image/jpeg" }}
-        ]);
-        
-        const response = await result.response;
-        const text = response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-        const analysisResult = JSON.parse(text);
+        const response = await openai.chat.completions.create({
+            model: MODEL_NAME,
+            messages: [
+                {
+                    role: "system",
+                    content: "You are a receipt auditor. Output valid JSON only."
+                },
+                {
+                    role: "user",
+                    content: [
+                        { type: "text", text: prompt },
+                        { type: "image_url", image_url: { url: receiptImage } }
+                    ]
+                }
+            ],
+            max_tokens: 1000
+        });
 
-        // Save to DB (Fire and forget)
-        try {
-            const newTransaction = new Transaction({
-                userItems: userItems,
-                verificationResult: analysisResult
-            });
-            await newTransaction.save();
-        } catch (dbErr) {
-            console.error("DB Save Failed:", dbErr.message);
-        }
+        const content = response.choices[0].message.content;
+        const cleanJson = content.replace(/```json/g, '').replace(/```/g, '').trim();
+        const result = JSON.parse(cleanJson);
 
-        res.json(analysisResult);
+        // Async DB Save
+        const newTransaction = new Transaction({
+            userItems: userItems,
+            verificationResult: result
+        });
+        newTransaction.save().catch(err => console.error("DB Error", err));
+
+        res.json(result);
 
     } catch (err) {
-        console.error("AI Error:", err.message);
+        console.error("DeepSeek Error:", err.message);
         res.status(500).send('Server Error');
     }
 });
