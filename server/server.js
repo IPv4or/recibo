@@ -6,15 +6,20 @@ require('dotenv').config();
 
 const app = express();
 
+// Connect Database
 connectDB();
 
+// Middleware
 app.use(cors());
 app.use(express.json({ limit: '50mb' })); 
 
+// Serve Frontend
 app.use(express.static(path.join(__dirname, '../client')));
 
+// API Routes
 app.use('/api', require('./routes/api'));
 
+// Catch-all for SPA
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, '../client/index.html'));
 });
