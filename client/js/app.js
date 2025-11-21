@@ -1,15 +1,8 @@
-const MOCK_DATABASE = [
-    { name: "Avocados (Bag)", price: 5.99, icon: "fa-carrot" },
-    { name: "Oat Milk", price: 4.49, icon: "fa-bottle-water" },
-    { name: "Whole Wheat Bread", price: 3.25, icon: "fa-bread-slice" },
-    { name: "Ground Coffee", price: 12.99, icon: "fa-mug-hot" },
-    { name: "Dish Soap", price: 2.99, icon: "fa-pump-soap" }
-];
-
 class ReciboApp {
     constructor() {
         this.state = {
             items: [],
+            storeName: "", // New State
             editingId: null,
             receiptImage: null,
             verificationResult: null 
@@ -54,6 +47,10 @@ class ReciboApp {
     }
 
     startShopping() {
+        // Capture Store Name
+        const storeInput = document.getElementById('store-input');
+        this.state.storeName = storeInput.value.trim() || "";
+
         this.state.items = [];
         this.updateScannerBadge();
         this.switchView('view-scanner');
@@ -63,49 +60,47 @@ class ReciboApp {
         const video = document.getElementById('camera-feed');
         const imageUrl = this.getFrameFromVideo(video);
         
-        // 1. Animate Photo
         this.animateJumpToBag(imageUrl);
 
-        // 2. Add "Ghost" Item immediately (Loading State)
+        // Ghost Item
         const tempId = Date.now();
         this.state.items.push({
             id: tempId,
             name: "Identifying...",
             price: 0.00,
-            icon: "fa-spinner fa-spin", // Loading icon
+            icon: "fa-spinner fa-spin",
             isProcessing: true
         });
         
         this.updateScannerBadge();
 
-        // 3. Send to DeepSeek in Background
         try {
             const response = await fetch('/api/identify-item', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ image: imageUrl })
+                body: JSON.stringify({ 
+                    image: imageUrl,
+                    storeContext: this.state.storeName // Sending Context
+                })
             });
             
             const data = await response.json();
             
-            // 4. Replace Ghost Item with Real Data
             const index = this.state.items.findIndex(i => i.id === tempId);
             if (index !== -1) {
                 this.state.items[index] = {
                     name: data.name || "Unknown Item",
                     price: data.price || 0.00,
                     icon: data.icon || "fa-box",
-                    id: tempId, // Keep same ID or generate new
+                    id: tempId,
                     isProcessing: false
                 };
             }
             
-            // Update Badge (and View if we were looking at list)
             this.updateScannerBadge();
             
         } catch (error) {
             console.error("Error identifying item:", error);
-            // Update Ghost to Error
             const index = this.state.items.findIndex(i => i.id === tempId);
             if (index !== -1) {
                 this.state.items[index] = {
@@ -143,7 +138,7 @@ class ReciboApp {
             context.fillStyle = '#333';
             context.fillRect(0, 0, canvas.width, canvas.height);
         }
-        return canvas.toDataURL('image/jpeg', 0.6); // Higher compression for faster DeepSeek processing
+        return canvas.toDataURL('image/jpeg', 0.6); 
     }
 
     async animateJumpToBag(imageUrl) {
@@ -271,15 +266,14 @@ class ReciboApp {
         if (!badge) return;
         const count = this.state.items.length;
         
-        // Check if any items are still processing
         const isProcessing = this.state.items.some(i => i.isProcessing);
         
         if (isProcessing) {
-            // Show a spinner or pulse if things are still loading
             badge.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin text-[10px]"></i>';
             badge.classList.add('bg-brand-400', 'text-black');
         } else {
             badge.innerText = count;
+            badge.classList.remove('bg-brand-400', 'text-black');
         }
         
         if (count > 0) {
@@ -310,14 +304,11 @@ class ReciboApp {
         }
 
         let total = 0;
-        // Render items (Processing items will show as pulsing)
         [...this.state.items].reverse().forEach((item) => {
-            total += item.price;
+            if (!item.isProcessing) total += item.price;
+            
             const el = document.createElement('div');
-            
-            // Conditional styling for "Processing" items
             const processingClass = item.isProcessing ? 'opacity-70 animate-pulse border-brand-500/50' : 'border-gray-800';
-            
             el.className = `bg-gray-900 p-4 rounded-2xl border ${processingClass} flex justify-between items-center animate-[fadeIn_0.3s_ease-out] group`;
             
             el.innerHTML = `
@@ -358,7 +349,8 @@ class ReciboApp {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
                     receiptImage: this.state.receiptImage,
-                    userItems: this.state.items
+                    userItems: this.state.items,
+                    storeContext: this.state.storeName // Sending Context
                 })
             });
 
