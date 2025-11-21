@@ -9,19 +9,39 @@ const openai = new OpenAI({
     apiKey: process.env.DEEPSEEK_API_KEY || 'mock-key'
 });
 
-// V3.2-Exp supports OCR/Multimodal via the chat endpoint
 const MODEL_NAME = "deepseek-chat";
+
+// --- Helper to robustly find JSON in AI responses ---
+function extractJson(text) {
+    try {
+        // 1. Try finding a JSON block between ```json and ```
+        const match = text.match(/```json\s*([\s\S]*?)\s*```/);
+        if (match) return JSON.parse(match[1]);
+
+        // 2. Try finding the first '{' and last '}'
+        const firstBrace = text.indexOf('{');
+        const lastBrace = text.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace !== -1) {
+            return JSON.parse(text.substring(firstBrace, lastBrace + 1));
+        }
+
+        // 3. Last resort: parse the whole thing
+        return JSON.parse(text);
+    } catch (e) {
+        console.error("JSON Parse Failed. Raw text:", text);
+        throw new Error("Invalid JSON format from AI");
+    }
+}
 
 router.get('/test', (req, res) => res.send('API is running'));
 
 // @route   POST api/identify-item
-// @desc    Uses DeepSeek Native OCR to read product label
 router.post('/identify-item', async (req, res) => {
     try {
-        const { image, storeContext } = req.body; 
+        const { scannedText, storeContext } = req.body; 
 
         if (!process.env.DEEPSEEK_API_KEY) {
-            await new Promise(r => setTimeout(r, 1500)); 
+            await new Promise(r => setTimeout(r, 1000));
             return res.json({ name: "Mock Item (No Key)", price: 5.99, icon: "fa-box" });
         }
 
@@ -30,40 +50,29 @@ router.post('/identify-item', async (req, res) => {
             messages: [
                 {
                     role: "system",
-                    content: `You are an intelligent grocery scanner at ${storeContext || 'a store'}. Your goal is to identifying the product name from the image text (OCR). Return ONLY valid JSON.`
+                    content: `You are a grocery product identifier. You receive raw OCR text scanned from a product package at ${storeContext || 'a store'}. Infer the product name and price. Return ONLY valid JSON.`
                 },
                 {
                     role: "user",
-                    content: [
-                        { type: "text", text: "Read the product packaging text. Return JSON with keys: 'name' (extracted name), 'price' (estimated USD number), 'icon' (font-awesome class)." },
-                        { type: "image_url", image_url: { url: image } }
-                    ]
+                    content: `OCR Text: "${scannedText}". \n\nIdentify this item. Return JSON: { "name": "Product Name", "price": 0.00 (estimate), "icon": "fa-apple" (font awesome class) }`
                 }
             ],
-            max_tokens: 150
+            max_tokens: 200
         });
 
-        const content = response.choices[0].message.content;
-        const cleanJson = content.replace(/```json/g, '').replace(/```/g, '').trim();
-        res.json(JSON.parse(cleanJson));
+        const itemData = extractJson(response.choices[0].message.content);
+        res.json(itemData);
 
     } catch (err) {
-        console.error("DeepSeek Vision Error:", err.message);
-        // Fallback to Tesseract if DeepSeek vision fails? 
-        // For now, just error out gracefully so we know.
-        res.status(500).json({ 
-            name: "Manual Check Needed", 
-            price: 0.00, 
-            icon: "fa-pen-to-square" 
-        });
+        console.error("DeepSeek Identify Error:", err.message);
+        res.status(500).json({ name: "Manual Check Required", price: 0.00, icon: "fa-pen" });
     }
 });
 
 // @route   POST api/verify-receipt
-// @desc    Uses DeepSeek Native OCR to read receipt
 router.post('/verify-receipt', async (req, res) => {
     try {
-        const { receiptImage, userItems, storeContext } = req.body;
+        const { receiptText, userItems, storeContext } = req.body;
 
         if (!process.env.DEEPSEEK_API_KEY) {
             return res.json({ discrepancies: [], verified: false });
@@ -71,49 +80,42 @@ router.post('/verify-receipt', async (req, res) => {
 
         const prompt = `
         Audit this transaction at ${storeContext || 'a store'}.
-        My Digital Cart: ${JSON.stringify(userItems)}.
+        
+        My Digital Cart: ${JSON.stringify(userItems)}
+        
+        Receipt OCR Text: 
+        ${receiptText}
         
         Task:
-        1. EXTRACT (OCR) all text from the receipt image provided.
-        2. Compare extracted receipt items against my digital cart.
-        3. Identify items on receipt NOT in cart (overcharge).
-        4. Identify items counted more times on receipt than in cart.
+        1. Compare the receipt text against my digital cart.
+        2. Identify items on receipt NOT in cart (overcharge).
+        3. Identify items counted more times on receipt than in cart.
         
-        Return JSON: { "verified": boolean, "discrepancies": [ { "itemName": string, "issue": string } ] }
+        Return JSON ONLY: { "verified": boolean, "discrepancies": [ { "itemName": string, "issue": string } ] }
         `;
 
         const response = await openai.chat.completions.create({
             model: MODEL_NAME,
             messages: [
-                {
-                    role: "system",
-                    content: "You are a receipt auditor with OCR capabilities. Output valid JSON only."
-                },
-                {
-                    role: "user",
-                    content: [
-                        { type: "text", text: prompt },
-                        { type: "image_url", image_url: { url: receiptImage } }
-                    ]
-                }
+                { role: "system", content: "You are a receipt auditor. Output valid JSON only." },
+                { role: "user", content: prompt }
             ],
             max_tokens: 1000
         });
 
-        const content = response.choices[0].message.content;
-        const cleanJson = content.replace(/```json/g, '').replace(/```/g, '').trim();
-        const result = JSON.parse(cleanJson);
+        const result = extractJson(response.choices[0].message.content);
 
+        // Save Transaction asynchronously
         const newTransaction = new Transaction({
             userItems: userItems,
             verificationResult: result
         });
-        newTransaction.save().catch(err => console.error("DB Error", err));
+        newTransaction.save().catch(err => console.error("DB Save Error", err));
 
         res.json(result);
 
     } catch (err) {
-        console.error("DeepSeek Error:", err.message);
+        console.error("DeepSeek Verify Error:", err.message);
         res.status(500).send('Server Error');
     }
 });
