@@ -6,13 +6,16 @@
     <title>recibo</title>
     
     <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="[https://cdn.tailwindcss.com](https://cdn.tailwindcss.com)"></script>
     
     <!-- FontAwesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="[https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css](https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css)">
     
     <!-- Google Font: DM Sans -->
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="[https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap](https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap)" rel="stylesheet">
+
+    <!-- Tesseract.js -->
+    <script src='[https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js](https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js)'></script>
 
     <!-- Custom Styles -->
     <link rel="stylesheet" href="css/styles.css">
@@ -78,15 +81,15 @@
                 <div class="w-full max-w-xs space-y-4 mb-8">
                     <div class="flex gap-4 items-center">
                         <div class="w-8 h-8 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-brand-400 font-bold shrink-0 text-sm">1</div>
-                        <p class="text-gray-400 text-sm">Scan items as you shop.</p>
+                        <p class="text-gray-400 text-sm">Scan items (Text visible).</p>
                     </div>
                     <div class="flex gap-4 items-center">
                         <div class="w-8 h-8 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-brand-400 font-bold shrink-0 text-sm">2</div>
-                        <p class="text-gray-400 text-sm">Scan receipt at checkout.</p>
+                        <p class="text-gray-400 text-sm">Scan receipt text clearly.</p>
                     </div>
                     <div class="flex gap-4 items-center">
                         <div class="w-8 h-8 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-brand-400 font-bold shrink-0 text-sm">3</div>
-                        <p class="text-gray-400 text-sm">Recibo finds the errors.</p>
+                        <p class="text-gray-400 text-sm">Recibo audits via AI.</p>
                     </div>
                 </div>
             </div>
@@ -114,7 +117,7 @@
                 
                 <div class="absolute top-24 inset-x-0 flex justify-center z-10">
                      <p class="text-white/90 font-medium bg-black/40 backdrop-blur-md px-6 py-2 rounded-full border border-white/10 shadow-lg">
-                        Point at item
+                        Scan Product Text
                     </p>
                 </div>
 
@@ -142,7 +145,7 @@
                 
                 <div class="absolute top-24 inset-x-0 flex justify-center z-10">
                      <p class="text-brand-400 font-bold text-sm bg-black/60 backdrop-blur-md px-4 py-2 rounded-full tracking-wider uppercase border border-brand-500/30 shadow-lg">
-                        Align Receipt
+                        Align Receipt Text
                     </p>
                 </div>
 
@@ -163,8 +166,8 @@
         <!-- VIEW: Processing State -->
         <section id="view-processing" class="view-section hidden h-full flex flex-col items-center justify-center bg-gray-950 p-6 text-center z-30 absolute inset-0">
             <div class="w-16 h-16 border-4 border-brand-500/30 border-t-brand-500 rounded-full animate-spin mb-6"></div>
-            <h3 class="text-2xl font-bold mb-2" id="processing-title">Identifying...</h3>
-            <p class="text-gray-400 text-sm" id="processing-subtitle">Matching product details</p>
+            <h3 class="text-2xl font-bold mb-2" id="processing-title">Reading...</h3>
+            <p class="text-gray-400 text-sm" id="processing-subtitle">Extracting text...</p>
         </section>
 
         <!-- VIEW: Cart List -->
