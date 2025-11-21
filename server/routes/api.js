@@ -11,31 +11,28 @@ const openai = new OpenAI({
 
 const MODEL_NAME = "deepseek-chat";
 
-// --- Helper to robustly find JSON in AI responses ---
+// Helper to clean JSON strings from AI
 function extractJson(text) {
     try {
-        // 1. Try finding a JSON block between ```json and ```
         const match = text.match(/```json\s*([\s\S]*?)\s*```/);
         if (match) return JSON.parse(match[1]);
-
-        // 2. Try finding the first '{' and last '}'
+        
         const firstBrace = text.indexOf('{');
         const lastBrace = text.lastIndexOf('}');
         if (firstBrace !== -1 && lastBrace !== -1) {
             return JSON.parse(text.substring(firstBrace, lastBrace + 1));
         }
-
-        // 3. Last resort: parse the whole thing
         return JSON.parse(text);
     } catch (e) {
-        console.error("JSON Parse Failed. Raw text:", text);
-        throw new Error("Invalid JSON format from AI");
+        console.error("JSON Parse Failed:", text);
+        throw new Error("Invalid JSON from AI");
     }
 }
 
 router.get('/test', (req, res) => res.send('API is running'));
 
 // @route   POST api/identify-item
+// @desc    Receives OCR Text -> Returns Item Data
 router.post('/identify-item', async (req, res) => {
     try {
         const { scannedText, storeContext } = req.body; 
@@ -50,7 +47,7 @@ router.post('/identify-item', async (req, res) => {
             messages: [
                 {
                     role: "system",
-                    content: `You are a grocery product identifier. You receive raw OCR text scanned from a product package at ${storeContext || 'a store'}. Infer the product name and price. Return ONLY valid JSON.`
+                    content: `You are a smart grocery assistant. You will receive raw OCR text scanned from a product package at ${storeContext || 'a store'}. Your job is to guess the product name and estimated price. Return valid JSON only.`
                 },
                 {
                     role: "user",
@@ -70,6 +67,7 @@ router.post('/identify-item', async (req, res) => {
 });
 
 // @route   POST api/verify-receipt
+// @desc    Receives Receipt Text -> Returns Audit
 router.post('/verify-receipt', async (req, res) => {
     try {
         const { receiptText, userItems, storeContext } = req.body;
@@ -105,9 +103,10 @@ router.post('/verify-receipt', async (req, res) => {
 
         const result = extractJson(response.choices[0].message.content);
 
-        // Save Transaction asynchronously
+        // Save to DB
         const newTransaction = new Transaction({
-            userItems: userItems,
+            storeContext,
+            userItems,
             verificationResult: result
         });
         newTransaction.save().catch(err => console.error("DB Save Error", err));
